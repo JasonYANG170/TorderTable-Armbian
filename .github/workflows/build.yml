@@ -23,13 +23,13 @@ jobs:
       - name: Build Armbian image
         uses: armbian/build@main
         with:
-          board: pinetab2-v0.1
-          branch: vendor
-          release: noble
-          build-desktop: false
-          build-minimal: true
-          kernel-configure: false
-          reuse-kernel-compiler: false
+          armbian_board: pinetab2-v0.1
+          armbian_branch: vendor
+          armbian_release: noble
+          armbian_ui: minimal
+          armbian_kernel_branch: vendor
+          armbian_compress: sha,img
+          armbian_extensions: ""
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
