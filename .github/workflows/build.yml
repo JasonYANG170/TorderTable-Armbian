@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Free space
@@ -20,20 +20,29 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Build Armbian image
-        uses: armbian/build@main
-        with:
-          armbian_board: pinetab2-v0.1
-          armbian_branch: vendor
-          armbian_release: noble
-          armbian_ui: minimal
-          armbian_kernel_branch: vendor
-          armbian_compress: sha,img
-          armbian_extensions: ""
+      - name: Clone Armbian build system
+        run: |
+          git clone --depth=1 https://github.com/armbian/build.git armbian-build
+
+      - name: Copy userpatches
+        run: |
+          cp -r userpatches/* armbian-build/userpatches/
+
+      - name: Build image
+        run: |
+          cd armbian-build
+          sudo ./compile.sh \
+            BOARD=pinetab2-v0.1 \
+            BRANCH=vendor \
+            RELEASE=noble \
+            BUILD_DESKTOP=no \
+            BUILD_MINIMAL=yes \
+            KERNEL_CONFIGURE=no \
+            SHARE_LOG=no
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Armbian-PineTab2-v0.1
-          path: output/images/*.img
+          path: armbian-build/output/images/*.img
           retention-days: 14
