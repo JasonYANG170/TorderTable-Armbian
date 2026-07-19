@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+/dts-v1/;
+
+#include "rk3566-pinetab2.dtsi"
+
+/ {
+	model = "Pine64 PineTab2 v0.1";
+	compatible = "pine64,pinetab2-v0.1", "pine64,pinetab2", "rockchip,rk3566";
+
+	/delete-node/ hdmi-con;
+	/delete-node/ led-flash;
+	/delete-node/ led_flash_reg;
+	/delete-node/ rk817-sound;
+	/delete-node/ speaker_amp;
+	/delete-node/ vdd1v2_dvp;
+};
+
+/* Disable display: LCD, DSI, HDMI */
+&backlight {
+	status = "disabled";
+};
+
+&dsi0 {
+	status = "disabled";
+};
+
+&dsi0_in {
+	status = "disabled";
+};
+
+&dsi0_out {
+	status = "disabled";
+};
+
+&dsi_dphy0 {
+	status = "disabled";
+};
+
+&hdmi {
+	status = "disabled";
+};
+
+&hdmi_in {
+	status = "disabled";
+};
+
+&hdmi_out {
+	status = "disabled";
+};
+
+&hdmi_sound {
+	status = "disabled";
+};
+
+&vop {
+	status = "disabled";
+};
+
+&vop_mmu {
+	status = "disabled";
+};
+
+&vp0 {
+	status = "disabled";
+};
+
+&vp1 {
+	status = "disabled";
+};
+
+/* Disable camera */
+&csi_dphy {
+	status = "disabled";
+};
+
+&i2c2 {
+	status = "disabled";
+};
+
+/* Disable touchscreen */
+&i2c1 {
+	status = "disabled";
+};
+
+/* Disable WiFi (SDIO) */
+&sdmmc1 {
+	status = "disabled";
+};
+
+/* Disable audio/speaker amplifier */
+&i2s0_8ch {
+	status = "disabled";
+};
+
+&i2s1_8ch {
+	status = "disabled";
+};
