@@ -1,0 +1,39 @@
+name: Build Armbian
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          docker-images: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Build Armbian image
+        uses: armbian/build@main
+        with:
+          board: pinetab2-v0.1
+          branch: vendor
+          release: noble
+          build-desktop: false
+          build-minimal: true
+          kernel-configure: false
+          reuse-kernel-compiler: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Armbian-PineTab2-v0.1
+          path: output/images/*.img
+          retention-days: 14

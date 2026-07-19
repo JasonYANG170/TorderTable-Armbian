@@ -13,15 +13,6 @@ BOOT_SCENARIO="spl-blobs"
 IMAGE_PARTITION_TABLE="gpt"
 BUILD_MINIMAL="yes"
 
-# Override kernel source to use local linux directory
-function post_family_config__pinetab2_custom_kernel_source() {
-	display_alert "$BOARD" "Using local kernel source: /home/yang/桌面/rkdev/linux" "info"
-	KERNELSOURCE="/home/yang/桌面/rkdev/linux"
-	KERNELBRANCH="branch:device/pine64-pinetab2_stable"
-	# Local kernel is 6.5.0
-	declare -g KERNEL_MAJOR_MINOR="6.5"
-}
-
 # Mainline U-Boot
 function post_family_config__pinetab2_use_mainline_uboot() {
 	display_alert "$BOARD" "Using mainline U-Boot for $BOARD / $BRANCH" "info"
