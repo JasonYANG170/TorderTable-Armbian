@@ -23,10 +23,15 @@ jobs:
       - name: Clone Armbian build system
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
+          mkdir -p armbian-build/userpatches/config/boards
+          mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
 
       - name: Copy userpatches
         run: |
-          cp -r userpatches/* armbian-build/userpatches/
+          cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
+          cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
+          ls -la armbian-build/userpatches/config/boards/
+          ls -la armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
 
       - name: Build image
         run: |
