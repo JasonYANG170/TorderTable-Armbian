@@ -1,0 +1,10 @@
+verbosity=1
+bootlogo=true
+console=both
+extraargs=cma=256M
+overlay_prefix=rk35xx
+overlays=panthor-gpu
+fdtfile=rockchip/rk3566-torder-tablet.dtb
+rootdev=UUID=26d5b469-1082-4b42-b5dd-2096e085678c
+rootfstype=ext4
+usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u
