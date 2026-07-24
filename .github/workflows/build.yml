@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -25,13 +27,16 @@ jobs:
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
           mkdir -p armbian-build/userpatches/config/boards
           mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
+          mkdir -p armbian-build/userpatches/customize/images
 
       - name: Copy userpatches
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
+          cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           ls -la armbian-build/userpatches/config/boards/
           ls -la armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
+          ls -la armbian-build/userpatches/customize/images/ 2>/dev/null || true
 
       - name: Build image
         run: |
@@ -51,3 +56,44 @@ jobs:
           name: Armbian-TorderTablet
           path: armbian-build/output/images/*.img
           retention-days: 14
+
+      - name: Get build info
+        id: info
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BUILD_DATE=$(date -u +"%Y%m%d")
+          echo "tag=build-${BUILD_DATE}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "name=Armbian Torder Tablet ${BUILD_DATE}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.info.outputs.tag }}
+          name: ${{ steps.info.outputs.name }}
+          body: |
+            ## Armbian Torder Tablet (RK3566)
+
+            **Board**: Torder Tablet
+            **SoC**: Rockchip RK3566
+            **Kernel**: 6.1.115-vendor-rk35xx
+            **OS**: Ubuntu Noble 24.04
+            **Commit**: ${{ github.sha }}
+
+            ### Features
+            - Vendor kernel with RK35XX support
+            - PARTLABEL fix for reliable reboot (no initramfs hang)
+            - GPT partition table with SPL blobs
+
+            ### Flash
+            ```bash
+            # Using dd (Linux/macOS)
+            sudo dd if=Armbian-*.img of=/dev/sdX bs=1M status=progress
+
+            # Using balenaEtcher (Windows/macOS/Linux)
+            # Select the .img file and target SD card
+            ```
+          files: armbian-build/output/images/*.img
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
