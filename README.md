@@ -1,12 +1,19 @@
 # TorderTable-Armbian
 
-Armbian build for Pine64 PineTab2 v0.1 (headless/embedded configuration)
+Armbian build for Torder Tablet (RK3566)
+
+## Device Info
+
+- **SoC**: Rockchip RK3566 (Cortex-A55 quad-core, up to 1.8GHz)
+- **Kernel**: 6.1.115-vendor-rk35xx
+- **OS**: Ubuntu Noble 24.04 (Armbian 26.02.0-trunk)
+- **DTB**: `rockchip/rk3566-torder-tablet.dtb`
 
 ## Features
 
 - Based on Armbian with RK35XX vendor kernel (6.1)
 - Minimal CLI system (Ubuntu Noble 24.04)
-- Headless configuration: display, WiFi, camera, touch, amplifier disabled
+- GPT partition table with SPL blobs boot scenario
 
 ## Build
 
@@ -28,20 +35,31 @@ cd build
 cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
 
 # Build
-./compile.sh BOARD=pinetab2-v0.1 BRANCH=vendor RELEASE=noble BUILD_DESKTOP=no BUILD_MINIMAL=yes KERNEL_CONFIGURE=no
+./compile.sh BOARD=torder-tablet BRANCH=vendor RELEASE=noble BUILD_DESKTOP=no BUILD_MINIMAL=yes KERNEL_CONFIGURE=no
 ```
 
-## Device Tree Modifications
+## Extracted Device Files
 
-The following peripherals are disabled in the device tree:
+The following files were extracted from a working device for reference:
 
-- **Display**: LCD, DSI, HDMI, backlight, VOP
-- **WiFi**: SDIO interface (sdmmc1)
-- **Camera**: OV5648 sensor, CSI DPHY
-- **Touchscreen**: Goodix GT911
-- **Amplifier**: Speaker amplifier, I2S audio
+- `armbian-release` - Armbian release info from the device
+- `config-6.1.115-vendor-rk35xx` - Kernel configuration
+- `boot/` - Boot files (armbianEnv.txt, boot.cmd, boot.scr, boot.bmp)
+- `dtb/rockchip/rk3566-torder-tablet.dtb` - Compiled device tree blob
+- `dtb/rockchip/overlay/` - DTB overlays
+- `kernel-packages.txt` - Installed kernel packages
+- `armbian-packages.txt` - Installed Armbian packages
+- `installed-packages.txt` - Full package list
+- `kernel-modules.txt` - Kernel module list
+- `dtb-files-found.txt` - DTB files found on device
+- `partition-info.txt` - Partition layout info
+
+## Board Configuration
+
+- `userpatches/config/boards/torder-tablet.csc` - Board configuration for Torder Tablet
+- `userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts` - Device tree source
 
 ## Files
 
-- `userpatches/config/boards/pinetab2-v0.1.csc` - Board configuration
-- `userpatches/patch/kernel/rk35xx-vendor-6.1/dt/` - Device tree files
+- `userpatches/config/boards/torder-tablet.csc` - Board configuration
+- `userpatches/patch/kernel/rk35xx-vendor-6.1/dt/` - Device tree source files

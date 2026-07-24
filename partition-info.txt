@@ -1,0 +1,9 @@
+NAME         FSTYPE FSVER LABEL      UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+mmcblk0                                                                                  
+©¸©¤mmcblk0p1  ext4   1.0   armbi_root 26d5b469-1082-4b42-b5dd-2096e085678c   23.6G    16% /var/log.hdd
+                                                                                         /
+mmcblk0boot0                                                                             
+mmcblk0boot1                                                                             
+zram0                                                                                    [SWAP]
+zram1                                                                       39.7M     8% /var/log
+zram2                                                                                    
