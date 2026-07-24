@@ -1,0 +1,10 @@
+ii  armbian-bsp-cli-torder-tablet-vendor       26.02.0-trunk                            arm64        Armbian CLI BSP for board 'torder-tablet' branch 'vendor'
+ii  armbian-bsp-desktop-torder-tablet-vendor   26.02.0-trunk                            arm64        Armbian bsp-desktop for release noble, common for all desktop environments on arm64 torder-tablet machines on vendor branch
+ii  armbian-config                             26.2.0-trunk.81.1216.190628              all          Armbian config: The Next Generation
+ii  armbian-firmware                           26.02.0-trunk                            all          Armbian - Linux firmware
+ii  armbian-noble-desktop-gnome                26.02.0-trunk                            all          Armbian desktop for Ubuntu noble gnome
+ii  armbian-plymouth-theme                     26.02.0-trunk                            all          boot animation, logger and I/O multiplexer - Armbian theme
+ii  armbian-zsh                                26.02.0-trunk                            all          Armbian improved ZShell (oh-my-zsh...)
+ii  base-files                                 26.02.0-trunk-13ubuntu10-noble           arm64        Armbian base system miscellaneous files
+ii  linux-dtb-vendor-rk35xx                    26.02.0-trunk                            arm64        Armbian Linux vendor DTBs in /boot/dtb-6.1.115-vendor-rk35xx
+ii  linux-image-vendor-rk35xx                  26.02.0-trunk                            arm64        Armbian Linux vendor kernel image 6.1.115-vendor-rk35xx
