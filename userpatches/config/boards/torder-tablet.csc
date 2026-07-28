@@ -7,11 +7,15 @@ BOARD_MAINTAINER=""
 INTRODUCED="2025"
 BOOTCONFIG="generic-rk3568_defconfig"
 KERNEL_TARGET="vendor"
-FULL_DESKTOP="no"
+FULL_DESKTOP="yes"
 BOOT_FDT_FILE="rockchip/rk3566-torder-tablet.dtb"
 BOOT_SCENARIO="spl-blobs"
 IMAGE_PARTITION_TABLE="gpt"
-BUILD_MINIMAL="yes"
+BUILD_MINIMAL="no"
+DESKTOP_ENVIRONMENT="gnome"
+DESKTOP_ENVIRONMENT_CONFIG_NAME="config_base"
+DESKTOP_APPGROUPS_SELECTED="browsers editors"
+GOVERNOR="performance"
 
 # Mainline U-Boot
 function post_family_config__torder_tablet_use_mainline_uboot() {
