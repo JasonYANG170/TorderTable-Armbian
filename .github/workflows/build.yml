@@ -45,8 +45,10 @@ jobs:
             BOARD=torder-tablet \
             BRANCH=vendor \
             RELEASE=noble \
-            BUILD_DESKTOP=no \
-            BUILD_MINIMAL=yes \
+            BUILD_DESKTOP=yes \
+            BUILD_MINIMAL=no \
+            DESKTOP=gnome \
+            DESKTOP_APPGROUPS_SELECTED="browsers editors" \
             KERNEL_CONFIGURE=no \
             SHARE_LOG=no
 
@@ -80,8 +82,12 @@ jobs:
             **Commit**: ${{ github.sha }}
 
             ### Features
+            - GNOME Desktop on Wayland
             - Vendor kernel with RK35XX support
             - PARTLABEL fix for reliable reboot (no initramfs hang)
+            - GPU Panfrost hardware acceleration
+            - CPU/GPU max performance mode
+            - Display 100Hz refresh rate
             - GPT partition table with SPL blobs
 
             ### Flash
