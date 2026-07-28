@@ -90,8 +90,8 @@ if [ "$(id -u)" -eq 1000 ]; then
     gsettings set org.freedesktop.Tracker3.Miner.Files crawling-interval -2 2>/dev/null || true
     gsettings set org.freedesktop.Tracker3.Miner.Files enable-monitors false 2>/dev/null || true
 
-    # Disable animations
-    gsettings set org.gnome.desktop.interface enable-animations false 2>/dev/null || true
+    # Enable animations (smooth UI experience)
+    gsettings set org.gnome.desktop.interface enable-animations true 2>/dev/null || true
     gsettings set org.gnome.desktop.wm.preferences audible-bell false 2>/dev/null || true
 
     # Disable GNOME search providers
