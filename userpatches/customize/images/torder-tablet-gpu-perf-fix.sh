@@ -133,4 +133,78 @@ if [ -f "${TRACKER_EXTRACT}" ]; then
     echo "Hidden=true" >> "${TRACKER_EXTRACT}"
 fi
 
+# ============================================================
+# Fix 7: Power button lock screen & backlight control
+# ============================================================
+# Power button: lock screen + turn off backlight
+# Press again: restore backlight (wake)
+cat > "${SDCARD}/usr/local/bin/lockscreen-monitor.sh" << 'PWREOF'
+#!/bin/bash
+BACKLIGHT="/sys/class/backlight/backlight/brightness"
+MAX_BRIGHT=$(cat /sys/class/backlight/backlight/max_brightness)
+
+# Wait for evtest to be available
+sleep 5
+
+# Check if evtest is available
+if ! command -v evtest &>/dev/null; then
+    apt-get install -y evtest &>/dev/null
+fi
+
+# Grab power key device exclusively
+POWER_DEV=""
+for dev in /dev/input/event*; do
+    if evtest --query "$dev" EV_KEY KEY_POWER 2>/dev/null; then
+        POWER_DEV="$dev"
+        break
+    fi
+done
+
+if [ -z "$POWER_DEV" ]; then
+    echo "Power key device not found"
+    exit 1
+fi
+
+echo "Monitoring power key: $POWER_DEV"
+
+evtest --grab "$POWER_DEV" | while read line; do
+    if echo "$line" | grep -q "code 116 (KEY_POWER), value 1"; then
+        BL=$(cat "$BACKLIGHT" 2>/dev/null)
+        if [ "$BL" -eq 0 ]; then
+            echo "$MAX_BRIGHT" > "$BACKLIGHT"
+        else
+            SESSION_ID=$(loginctl list-sessions --no-legend | grep armbian | awk '{print $1}')
+            if [ -n "$SESSION_ID" ]; then
+                loginctl lock-session "$SESSION_ID"
+            fi
+            sleep 0.3
+            echo 0 > "$BACKLIGHT"
+        fi
+    fi
+done
+PWREOF
+chmod 755 "${SDCARD}/usr/local/bin/lockscreen-monitor.sh"
+
+cat > "${SDCARD}/etc/systemd/system/lockscreen-monitor.service" << 'SVCEOF'
+[Unit]
+Description=Power Key Lock Screen & Backlight Control
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/lockscreen-monitor.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+chroot "${SDCARD}" /bin/bash -c "systemctl enable lockscreen-monitor.service 2>/dev/null" || true
+
+# Install evtest
+chroot "${SDCARD}" /bin/bash -c "apt-get install -y evtest 2>/dev/null" || true
+
+display_alert "Torder Tablet" "Power button lock screen & backlight control configured" "info"
+
 display_alert "Torder Tablet" "GPU & performance optimizations applied" "info"
