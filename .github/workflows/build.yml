@@ -52,11 +52,20 @@ jobs:
             KERNEL_CONFIGURE=no \
             SHARE_LOG=no
 
+      - name: Compress image for release
+        run: |
+          cd armbian-build/output/images
+          for img in *.img; do
+            echo "Compressing $img..."
+            xz -T0 -1 "$img"
+          done
+          ls -lh *.img.xz
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Armbian-TorderTablet
-          path: armbian-build/output/images/*.img
+          path: armbian-build/output/images/*.img.xz
           retention-days: 14
 
       - name: Get build info
@@ -98,7 +107,7 @@ jobs:
             # Using balenaEtcher (Windows/macOS/Linux)
             # Select the .img file and target SD card
             ```
-          files: armbian-build/output/images/*.img
+          files: armbian-build/output/images/*.img.xz
           draft: false
           prerelease: false
         env:
