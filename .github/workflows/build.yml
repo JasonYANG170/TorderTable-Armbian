@@ -55,11 +55,12 @@ jobs:
       - name: Compress image for release
         run: |
           cd armbian-build/output/images
+          sudo apt-get install -y xz-utils
           for img in *.img; do
             echo "Compressing $img..."
-            xz -T0 -1 "$img"
+            sudo xz -T0 -1 "$img"
           done
-          ls -lh *.img.xz
+          sudo ls -lh *.img.xz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
