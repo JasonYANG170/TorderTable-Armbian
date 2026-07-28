@@ -47,7 +47,7 @@ jobs:
             RELEASE=noble \
             BUILD_DESKTOP=yes \
             BUILD_MINIMAL=no \
-            DESKTOP=gnome \
+            DESKTOP_ENVIRONMENT=gnome \
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \
             KERNEL_CONFIGURE=no \
             SHARE_LOG=no
