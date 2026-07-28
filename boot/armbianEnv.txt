@@ -1,7 +1,7 @@
 verbosity=1
 bootlogo=true
 console=both
-extraargs=cma=512M
+extraargs=cma=1024M
 overlay_prefix=rk35xx
 overlays=panthor-gpu
 fdtfile=rockchip/rk3566-torder-tablet.dtb
