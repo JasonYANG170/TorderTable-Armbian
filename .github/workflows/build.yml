@@ -61,7 +61,7 @@ jobs:
           sudo apt-get install -y xz-utils
           for img in *.img; do
             echo "Compressing $img..."
-            sudo xz -T0 -1 "$img"
+            sudo xz -T0 -6 "$img"
           done
           sudo ls -lh *.img.xz
 
