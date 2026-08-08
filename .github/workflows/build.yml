@@ -37,6 +37,9 @@ jobs:
           # Copy pre-compiled DTB to kernel DTB directory (ensures it's installed to boot partition)
           mkdir -p armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
+          # Also copy to userpatches/dtb for post_install hook fallback
+          mkdir -p armbian-build/userpatches/dtb/rockchip/
+          cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
           ls -la armbian-build/userpatches/config/boards/
           ls -la armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           ls -la armbian-build/userpatches/customize/images/ 2>/dev/null || true
@@ -55,10 +58,38 @@ jobs:
             KERNEL_CONFIGURE=no \
             SHARE_LOG=no
 
-      - name: Compress image for release
+      - name: Install DTB to boot partition
         run: |
           cd armbian-build/output/images
           sudo apt-get install -y xz-utils
+          for img in *.img; do
+            echo "Installing DTB to $img..."
+            LOOP=$(sudo losetup -fP --show "$img")
+            sleep 1
+            # Find boot partition (partition 1)
+            BOOT_PART="${LOOP}p1"
+            TMPDIR=$(mktemp -d)
+            sudo mount "$BOOT_PART" "$TMPDIR"
+            echo "Boot partition contents:"
+            ls -la "$TMPDIR"/ | head -20
+            # Install DTB to all rockchip DTB directories
+            for dtb_dir in "$TMPDIR"/dtb*/rockchip "$TMPDIR"/dtb/rockchip; do
+              if [ -d "$(dirname "$dtb_dir")" ]; then
+                sudo mkdir -p "$dtb_dir"
+                sudo cp "${{ github.workspace }}/dtb/rockchip/rk3566-torder-tablet.dtb" "$dtb_dir/"
+                echo "  Installed to $dtb_dir"
+              fi
+            done
+            echo "Verifying DTB installed:"
+            find "$TMPDIR" -name "*torder*" -ls
+            sudo umount "$TMPDIR"
+            sudo losetup -d "$LOOP"
+            rmdir "$TMPDIR"
+          done
+
+      - name: Compress image for release
+        run: |
+          cd armbian-build/output/images
           for img in *.img; do
             echo "Compressing $img..."
             sudo xz -T0 -6 "$img"
