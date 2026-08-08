@@ -25,75 +25,38 @@ jobs:
       - name: Clone Armbian build system
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
-          mkdir -p armbian-build/userpatches/config/boards
+          mkdir -p armbian-build/userpatches/{config/boards,customize/images,dtb/rockchip}
           mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
-          mkdir -p armbian-build/userpatches/customize/images
 
-      - name: Copy userpatches
+      - name: Copy userpatches and DTB
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
-          # Copy pre-compiled DTB to kernel DTB directory (ensures it's installed to boot partition)
-          mkdir -p armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/
-          cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
-          # Also copy to userpatches/dtb for post_install hook fallback
-          mkdir -p armbian-build/userpatches/dtb/rockchip/
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
-          ls -la armbian-build/userpatches/config/boards/
-          ls -la armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
-          ls -la armbian-build/userpatches/customize/images/ 2>/dev/null || true
+
+      - name: Fix Docker config for ORAS
+        run: echo '{ }' > ~/.docker/config.json
 
       - name: Build image
         run: |
           cd armbian-build
           sudo ./compile.sh \
-            BOARD=torder-tablet \
-            BRANCH=vendor \
-            RELEASE=noble \
-            BUILD_DESKTOP=yes \
-            BUILD_MINIMAL=no \
+            BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
+            BUILD_DESKTOP=yes BUILD_MINIMAL=no \
             DESKTOP_ENVIRONMENT=gnome \
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \
-            KERNEL_CONFIGURE=no \
-            SHARE_LOG=no
+            KERNEL_CONFIGURE=no SHARE_LOG=no
 
-      - name: Install DTB to boot partition
+      - name: Post-build - fix DTB PARTLABEL boot services
+        run: |
+          chmod +x scripts/post-build.sh
+          sudo bash scripts/post-build.sh armbian-build/output/images
+
+      - name: Compress image
         run: |
           cd armbian-build/output/images
-          sudo apt-get install -y xz-utils
-          for img in *.img; do
-            echo "Installing DTB to $img..."
-            LOOP=$(sudo losetup -fP --show "$img")
-            sleep 1
-            # Find boot partition (partition 1)
-            BOOT_PART="${LOOP}p1"
-            TMPDIR=$(mktemp -d)
-            sudo mount "$BOOT_PART" "$TMPDIR"
-            echo "Boot partition contents:"
-            ls -la "$TMPDIR"/ | head -20
-            # Install DTB to all rockchip DTB directories
-            for dtb_dir in "$TMPDIR"/dtb*/rockchip "$TMPDIR"/dtb/rockchip; do
-              if [ -d "$(dirname "$dtb_dir")" ]; then
-                sudo mkdir -p "$dtb_dir"
-                sudo cp "${{ github.workspace }}/dtb/rockchip/rk3566-torder-tablet.dtb" "$dtb_dir/"
-                echo "  Installed to $dtb_dir"
-              fi
-            done
-            echo "Verifying DTB installed:"
-            find "$TMPDIR" -name "*torder*" -ls
-            sudo umount "$TMPDIR"
-            sudo losetup -d "$LOOP"
-            rmdir "$TMPDIR"
-          done
-
-      - name: Compress image for release
-        run: |
-          cd armbian-build/output/images
-          for img in *.img; do
-            echo "Compressing $img..."
-            sudo xz -T0 -6 "$img"
-          done
+          sudo xz -T0 -6 *.img
           sudo ls -lh *.img.xz
 
       - name: Upload artifact
@@ -118,29 +81,18 @@ jobs:
           name: ${{ steps.info.outputs.name }}
           body: |
             ## Armbian Torder Tablet (RK3566)
-
-            **Board**: Torder Tablet
-            **SoC**: Rockchip RK3566
             **Kernel**: 6.1.115-vendor-rk35xx
-            **OS**: Ubuntu Noble 24.04
-            **Commit**: ${{ github.sha }}
+            **OS**: Ubuntu Noble 24.04 (GNOME)
 
             ### Features
-            - GNOME Desktop on Wayland
-            - Vendor kernel with RK35XX support
-            - PARTLABEL fix for reliable reboot (no initramfs hang)
-            - GPU Panfrost hardware acceleration
-            - CPU/GPU max performance mode
-            - Display 100Hz refresh rate
-            - GPT partition table with SPL blobs
+            - PARTLABEL fix (reliable reboot)
+            - GPU Panfrost acceleration
+            - Power key lockscreen + backlight control
+            - GPT partition with SPL blobs
 
             ### Flash
             ```bash
-            # Using dd (Linux/macOS)
             sudo dd if=Armbian-*.img of=/dev/sdX bs=1M status=progress
-
-            # Using balenaEtcher (Windows/macOS/Linux)
-            # Select the .img file and target SD card
             ```
           files: armbian-build/output/images/*.img.xz
           draft: false
