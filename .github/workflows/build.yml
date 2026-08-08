@@ -34,6 +34,9 @@ jobs:
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
+          # Copy pre-compiled DTB to kernel DTB directory (ensures it's installed to boot partition)
+          mkdir -p armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/
+          cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/output/cache/sources/rk35xx-vendor-6.1/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
           ls -la armbian-build/userpatches/config/boards/
           ls -la armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           ls -la armbian-build/userpatches/customize/images/ 2>/dev/null || true

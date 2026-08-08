@@ -97,11 +97,44 @@ function post_install__torder_tablet_initramfs_partlabel_fix() {
 		if ! grep -q "PARTLABEL" "${local_script}"; then
 			sed -i 's|UUID=\*\|LABEL=\*\|PARTUUID=\*\|/dev/\*|UUID=*|LABEL=*|PARTUUID=*|PARTLABEL=*|/dev/*|g' "${local_script}" 2>/dev/null || true
 			display_alert "$BOARD" "initramfs scripts/local patched for PARTLABEL support" "info"
-		else
-			display_alert "$BOARD" "initramfs scripts/local already has PARTLABEL support" "info"
-		fi
+			else
+				display_alert "$BOARD" "initramfs scripts/local already has PARTLABEL support" "info"
+			fi
 	fi
 
 	# Also ensure /dev/disk/by-partlabel directory exists
 	mkdir -p "${SDCARD}/dev/disk/by-partlabel" 2>/dev/null || true
+}
+
+# ============================================================
+# Ensure DTB is installed to boot partition
+# The DTS patch may not compile correctly during kernel build,
+# so we copy the pre-compiled DTB directly to the boot partition.
+# ============================================================
+function post_install__torder_tablet_install_dtb() {
+	display_alert "$BOARD" "Installing DTB to boot partition" "info"
+
+	# Find the pre-compiled DTB in the userpatches directory
+	local dtb_src="${SRC}/userpatches/patch/kernel/${KERNELSourceType}-${KERNEL_MAJOR_MINOR}/dt/rockchip/rk3566-torder-tablet.dtb"
+	local dtb_fallback="${SRC}/dtb/rockchip/rk3566-torder-tablet.dtb"
+	local dtb_file=""
+
+	if [[ -f "${dtb_src}" ]]; then
+		dtb_file="${dtb_src}"
+	elif [[ -f "${dtb_fallback}" ]]; then
+		dtb_file="${dtb_fallback}"
+	fi
+
+	if [[ -n "${dtb_file}" && -f "${dtb_file}" ]]; then
+		# Install to boot partition for all kernel versions
+		for dtb_dir in "${SDCARD}/boot/dtb"*/rockchip "${SDCARD}/boot/dtb/rockchip"; do
+			if [[ -d "$(dirname "${dtb_dir}")" ]]; then
+				mkdir -p "${dtb_dir}" 2>/dev/null || true
+				cp "${dtb_file}" "${dtb_dir}/rk3566-torder-tablet.dtb" 2>/dev/null || true
+				display_alert "$BOARD" "Installed DTB to ${dtb_dir}" "info"
+			fi
+		done
+	else
+		display_alert "$BOARD" "Warning: DTB file not found, cannot install" "warn"
+	fi
 }
