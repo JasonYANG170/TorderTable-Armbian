@@ -1,0 +1,12 @@
+[Unit]
+Description=Unisoc UWE5621DS/UWE5622 Bluetooth support for Torder Tablet
+Before=bluetooth.service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/torder-tablet-bluetooth
+ExecStop=/bin/sh -c 'pkill -f "hciattach_opi.*sprd" || true; hciconfig hci0 down 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
