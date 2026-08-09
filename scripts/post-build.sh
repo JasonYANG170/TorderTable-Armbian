@@ -4,6 +4,8 @@ set -e
 
 WORK="$1"
 IMG="$2"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
 
 if [ -z "$IMG" ]; then
     IMG=$(find "$WORK" -name "*.img" -not -name "*.img.*" | head -1)
@@ -91,62 +93,31 @@ echo "Touchscreen auto-load configured"
 # ============================================================
 # 6. WiFi firmware fixes
 # ============================================================
-FW="$TMPDIR/lib/firmware"
-if [ -d "$FW/uwe5621ds" ]; then
-    sudo ln -sf wcnmodem.bin "$FW/uwe5621ds/wcnmodem_2ant.bin" 2>/dev/null || true
-    sudo cp "$FW/uwe5621ds/wifi_56630001_2ant.ini" "$FW/" 2>/dev/null || true
-    sudo cp "$FW/uwe5621ds/wifi_56630001_3ant.ini" "$FW/" 2>/dev/null || true
-    sudo cp "$FW/uwe5621ds/wcnmodem.bin" "$FW/" 2>/dev/null || true
-    sudo cp "$FW/uwe5621ds/wcnmodem_2ant.bin" "$FW/" 2>/dev/null || true
-    echo "WiFi firmware configured"
-fi
-
-# The UWE5621DS Bluetooth controller is exposed as /dev/ttyBT0.  It needs
-# Armbian's Spreadtrum-aware hciattach binary after the WiFi SDIO stack is up.
-sudo curl -fsSL \
-    "https://raw.githubusercontent.com/orangepi-xunlong/orangepi-build/b90483bdd27521c4c2631b3ada9edb9fe589e720/external/packages/blobs/bt/hciattach/hciattach_opi_arm64" \
-    -o "$TMPDIR/usr/bin/hciattach_opi"
-sudo chmod 755 "$TMPDIR/usr/bin/hciattach_opi"
-
-sudo tee "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth" > /dev/null << 'BTSCRIPTEOF'
-#!/bin/sh
-set -eu
-
-/usr/sbin/modprobe sprdwl_ng
-/usr/sbin/modprobe sprdbt_tty
-/usr/sbin/modprobe hci_uart
-/usr/sbin/rfkill unblock bluetooth || true
-
-for _ in $(seq 1 30); do
-    [ -c /dev/ttyBT0 ] && break
-    sleep 1
+for file in hciattach_opi_arm64 wcnmodem.bin wcnmodem_2ant.bin \
+    wifi_56630001_2ant.ini wifi_56630001_3ant.ini bt_configure_pskey.ini \
+    bt_configure_rf.ini bt_configure_rf_marlin3e_2.ini bt_configure_rf_marlin3e_3.ini \
+    torder-tablet-bluetooth torder-tablet-bluetooth.service; do
+    test -f "$UWE_ASSETS/$file"
 done
 
-[ -c /dev/ttyBT0 ]
-exec /usr/bin/hciattach_opi -n -s 1500000 /dev/ttyBT0 sprd
-BTSCRIPTEOF
-sudo chmod 755 "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth"
-
-sudo tee "$TMPDIR/etc/systemd/system/torder-tablet-bluetooth.service" > /dev/null << 'BTSERVICEEOF'
-[Unit]
-Description=Unisoc UWE5621DS Bluetooth controller
-After=systemd-modules-load.service network.target
-Wants=network.target
-Before=bluetooth.service
-
-[Service]
-Type=simple
-ExecStart=/usr/local/sbin/torder-tablet-bluetooth
-ExecStop=/bin/sh -c 'pkill -f "hciattach_opi.*sprd" || true; hciconfig hci0 down 2>/dev/null || true'
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-BTSERVICEEOF
+FW="$TMPDIR/lib/firmware"
+sudo install -d "$FW/uwe5621ds" "$TMPDIR/usr/bin" "$TMPDIR/usr/lib/systemd/system"
+sudo install -m 644 "$UWE_ASSETS/wcnmodem.bin" "$FW/uwe5621ds/wcnmodem.bin"
+sudo install -m 644 "$UWE_ASSETS/wcnmodem_2ant.bin" "$FW/uwe5621ds/wcnmodem_2ant.bin"
+sudo install -m 644 "$UWE_ASSETS/wifi_56630001_2ant.ini" "$FW/uwe5621ds/wifi_56630001_2ant.ini"
+sudo install -m 644 "$UWE_ASSETS/wifi_56630001_3ant.ini" "$FW/uwe5621ds/wifi_56630001_3ant.ini"
+sudo install -m 644 "$UWE_ASSETS/wifi_56630001_2ant.ini" "$FW/wifi_56630001_2ant.ini"
+sudo install -m 644 "$UWE_ASSETS/wifi_56630001_3ant.ini" "$FW/wifi_56630001_3ant.ini"
+sudo install -m 644 "$UWE_ASSETS/bt_configure_pskey.ini" "$FW/bt_configure_pskey.ini"
+sudo install -m 644 "$UWE_ASSETS/bt_configure_rf.ini" "$FW/bt_configure_rf.ini"
+sudo install -m 644 "$UWE_ASSETS/bt_configure_rf_marlin3e_2.ini" "$FW/bt_configure_rf_marlin3e_2.ini"
+sudo install -m 644 "$UWE_ASSETS/bt_configure_rf_marlin3e_3.ini" "$FW/bt_configure_rf_marlin3e_3.ini"
+sudo install -m 755 "$UWE_ASSETS/hciattach_opi_arm64" "$TMPDIR/usr/bin/hciattach_opi"
+sudo install -m 755 "$UWE_ASSETS/torder-tablet-bluetooth" "$TMPDIR/usr/bin/torder-tablet-bluetooth"
+sudo install -m 644 "$UWE_ASSETS/torder-tablet-bluetooth.service" "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
-sudo ln -sf ../torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-tablet-bluetooth.service"
-echo "UWE5621DS Bluetooth configured"
+sudo ln -sf /usr/lib/systemd/system/torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-tablet-bluetooth.service"
+echo "UWE5621DS WiFi and Bluetooth assets installed"
 
 # ============================================================
 # 7. Runtime performance policy
@@ -455,7 +426,7 @@ ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
 ls "$TMPDIR/usr/bin/hciattach_opi"
 ls "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth"
-ls "$TMPDIR/etc/systemd/system/torder-tablet-bluetooth.service"
+ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 
 # Cleanup
 sudo umount "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys" 2>/dev/null || true
