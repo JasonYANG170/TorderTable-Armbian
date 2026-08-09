@@ -157,6 +157,27 @@ sudo sed -i 's/^#*HandlePowerKey=.*/HandlePowerKey=ignore/' "$TMPDIR/etc/systemd
 echo "HandlePowerKey=ignore"
 
 # ============================================================
+# 10. GNOME power button = nothing (no shutdown dialog)
+# ============================================================
+# Set dconf defaults for GNOME power button
+sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d"
+sudo tee "$TMPDIR/etc/dconf/db/local.d/01-power" > /dev/null << 'GNOMEEOF'
+[org/gnome/settings-daemon/plugins/power]
+power-button-action='nothing'
+GNOMEEOF
+
+# Lock the setting so user can't override
+sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d/locks"
+sudo tee "$TMPDIR/etc/dconf/db/local.d/locks/01-power" > /dev/null << 'LOCKEOF'
+[org/gnome/settings-daemon/plugins/power]
+power-button-action
+LOCKEOF
+
+# Compile dconf database
+sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
+echo "GNOME power button set to nothing"
+
+# ============================================================
 # 10. depmod
 # ============================================================
 sudo chroot "$TMPDIR" depmod -a 6.1.115-vendor-rk35xx 2>/dev/null || true
