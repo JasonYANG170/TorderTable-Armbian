@@ -329,7 +329,7 @@ fi
 # Verify
 # ============================================================
 echo "=== Verify ==="
-grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf" | grep -v '^#'
+grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
 ls "$TMPDIR/etc/systemd/system/powerkey-backlight-toggle.service"
