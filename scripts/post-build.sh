@@ -101,6 +101,58 @@ if [ -d "$FW/uwe5621ds" ]; then
     echo "WiFi firmware configured"
 fi
 
+# The UWE5621DS Bluetooth controller is exposed as /dev/ttyBT0.  It needs
+# Armbian's Spreadtrum-aware hciattach binary after the WiFi SDIO stack is up.
+HCIATTACH_SRC="$WORK/../../packages/blobs/bt/hciattach/hciattach_opi_arm64"
+if [ -f "$HCIATTACH_SRC" ]; then
+    sudo install -m 755 "$HCIATTACH_SRC" "$TMPDIR/usr/bin/hciattach_opi"
+else
+    sudo curl -fsSL \
+        "https://raw.githubusercontent.com/armbian/build/main/packages/blobs/bt/hciattach/hciattach_opi_arm64" \
+        -o "$TMPDIR/usr/bin/hciattach_opi"
+    sudo chmod 755 "$TMPDIR/usr/bin/hciattach_opi"
+fi
+
+sudo tee "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth" > /dev/null << 'BTSCRIPTEOF'
+#!/bin/sh
+set -eu
+
+/usr/sbin/modprobe sprdwl_ng
+/usr/sbin/modprobe sprdbt_tty
+/usr/sbin/modprobe hci_uart
+/usr/sbin/rfkill unblock bluetooth || true
+
+for _ in $(seq 1 30); do
+    [ -c /dev/ttyBT0 ] && break
+    sleep 1
+done
+
+[ -c /dev/ttyBT0 ]
+exec /usr/bin/hciattach_opi -n -s 1500000 /dev/ttyBT0 sprd
+BTSCRIPTEOF
+sudo chmod 755 "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth"
+
+sudo tee "$TMPDIR/etc/systemd/system/torder-tablet-bluetooth.service" > /dev/null << 'BTSERVICEEOF'
+[Unit]
+Description=Unisoc UWE5621DS Bluetooth controller
+After=systemd-modules-load.service network.target
+Wants=network.target
+Before=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/torder-tablet-bluetooth
+ExecStop=/bin/sh -c 'pkill -f "hciattach_opi.*sprd" || true; hciconfig hci0 down 2>/dev/null || true'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+BTSERVICEEOF
+sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
+sudo ln -sf ../torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-tablet-bluetooth.service"
+echo "UWE5621DS Bluetooth configured"
+
 # ============================================================
 # 7. Power key lock screen, backlight, and touch wake
 # ============================================================
@@ -340,6 +392,9 @@ ls "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 ls "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules"
 ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
+ls "$TMPDIR/usr/bin/hciattach_opi"
+ls "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth"
+ls "$TMPDIR/etc/systemd/system/torder-tablet-bluetooth.service"
 
 # Cleanup
 sudo umount "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys" 2>/dev/null || true
