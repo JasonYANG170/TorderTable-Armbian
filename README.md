@@ -76,6 +76,7 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
 ### 6. Power Key Lock + Backlight
 - **Problem**: Power key did not reliably lock/wake the tablet desktop
 - **Fix**: Installs `powerkey-backlight-toggle.service`
+  - Service grabs the RK805 power-key input device
   - Power key locks the user session and dims backlight to `0`
   - Second press restores the previous brightness
   - Keeps `bl_power=0` and avoids synthetic input so the touch controller remains responsive
