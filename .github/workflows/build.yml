@@ -38,6 +38,12 @@ jobs:
       - name: Fix Docker config for ORAS
         run: echo '{ }' > ~/.docker/config.json
 
+      - name: Clear Armbian cache for clean build
+        run: |
+          sudo rm -rf /root/.cache/armbian
+          sudo rm -rf /var/cache/armbian
+          echo "Cache cleared for clean rootfs"
+
       - name: Build image
         run: |
           cd armbian-build
