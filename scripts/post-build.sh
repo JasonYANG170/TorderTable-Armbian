@@ -103,15 +103,10 @@ fi
 
 # The UWE5621DS Bluetooth controller is exposed as /dev/ttyBT0.  It needs
 # Armbian's Spreadtrum-aware hciattach binary after the WiFi SDIO stack is up.
-HCIATTACH_SRC="$WORK/../../packages/blobs/bt/hciattach/hciattach_opi_arm64"
-if [ -f "$HCIATTACH_SRC" ]; then
-    sudo install -m 755 "$HCIATTACH_SRC" "$TMPDIR/usr/bin/hciattach_opi"
-else
-    sudo curl -fsSL \
-        "https://raw.githubusercontent.com/armbian/build/main/packages/blobs/bt/hciattach/hciattach_opi_arm64" \
-        -o "$TMPDIR/usr/bin/hciattach_opi"
-    sudo chmod 755 "$TMPDIR/usr/bin/hciattach_opi"
-fi
+sudo curl -fsSL \
+    "https://raw.githubusercontent.com/orangepi-xunlong/orangepi-build/b90483bdd27521c4c2631b3ada9edb9fe589e720/external/packages/blobs/bt/hciattach/hciattach_opi_arm64" \
+    -o "$TMPDIR/usr/bin/hciattach_opi"
+sudo chmod 755 "$TMPDIR/usr/bin/hciattach_opi"
 
 sudo tee "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth" > /dev/null << 'BTSCRIPTEOF'
 #!/bin/sh
