@@ -101,7 +101,7 @@ for file in hciattach_opi_arm64 wcnmodem.bin wcnmodem_2ant.bin \
 done
 
 FW="$TMPDIR/lib/firmware"
-sudo install -d "$FW/uwe5621ds" "$TMPDIR/usr/bin" "$TMPDIR/usr/lib/systemd/system"
+sudo install -d "$FW/uwe5621ds" "$TMPDIR/usr/bin" "$TMPDIR/usr/lib/systemd/system" "$TMPDIR/usr/local/sbin"
 sudo install -m 644 "$UWE_ASSETS/wcnmodem.bin" "$FW/uwe5621ds/wcnmodem.bin"
 sudo install -m 644 "$UWE_ASSETS/wcnmodem_2ant.bin" "$FW/uwe5621ds/wcnmodem_2ant.bin"
 sudo install -m 644 "$UWE_ASSETS/wifi_56630001_2ant.ini" "$FW/uwe5621ds/wifi_56630001_2ant.ini"
@@ -117,6 +117,50 @@ sudo install -m 755 "$UWE_ASSETS/torder-tablet-bluetooth" "$TMPDIR/usr/bin/torde
 sudo install -m 644 "$UWE_ASSETS/torder-tablet-bluetooth.service" "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
 sudo ln -sf /usr/lib/systemd/system/torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-tablet-bluetooth.service"
+
+# The Unisoc driver refuses to scan with no valid MAC address.  Generate a
+# stable, locally administered address for each flashed device before udev can
+# load the WiFi modules; do not bake one device's factory address into images.
+sudo tee "$TMPDIR/usr/local/sbin/torder-wifi-mac" > /dev/null << 'WIFIMACEOF'
+#!/bin/bash
+set -euo pipefail
+
+mac_file=/lib/firmware/unisoc_wifi_mac.txt
+if [ -s "$mac_file" ] && grep -Eq '^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}[[:space:]]*$' "$mac_file"; then
+    exit 0
+fi
+
+seed=$(tr -d '\n' < /etc/machine-id 2>/dev/null || true)
+if [ -z "$seed" ] && [ -r /proc/device-tree/serial-number ]; then
+    seed=$(tr -d '\000\n' < /proc/device-tree/serial-number)
+fi
+[ -n "$seed" ] || seed=$(cat /proc/sys/kernel/random/boot_id)
+
+hash=$(printf '%s' "$seed" | sha256sum | awk '{print $1}')
+first=$(( (16#${hash:0:2} | 2) & 254 ))
+printf '%02x:%s:%s:%s:%s:%s\n' "$first" \
+    "${hash:2:2}" "${hash:4:2}" "${hash:6:2}" "${hash:8:2}" "${hash:10:2}" > "$mac_file"
+WIFIMACEOF
+sudo chmod 755 "$TMPDIR/usr/local/sbin/torder-wifi-mac"
+
+sudo tee "$TMPDIR/usr/lib/systemd/system/torder-wifi-mac.service" > /dev/null << 'WIFIMACSERVICEEOF'
+[Unit]
+Description=Provision a unique MAC address for Unisoc WiFi
+DefaultDependencies=no
+Wants=local-fs.target
+After=local-fs.target
+Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service
+ConditionPathIsReadWrite=/lib/firmware
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/torder-wifi-mac
+
+[Install]
+WantedBy=sysinit.target
+WIFIMACSERVICEEOF
+sudo mkdir -p "$TMPDIR/etc/systemd/system/sysinit.target.wants"
+sudo ln -sf /usr/lib/systemd/system/torder-wifi-mac.service "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service"
 echo "UWE5621DS WiFi and Bluetooth assets installed"
 
 # ============================================================
@@ -424,6 +468,8 @@ ls "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 ls "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules"
 ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
+ls "$TMPDIR/usr/local/sbin/torder-wifi-mac"
+ls "$TMPDIR/usr/lib/systemd/system/torder-wifi-mac.service"
 ls "$TMPDIR/usr/bin/hciattach_opi"
 ls "$TMPDIR/usr/bin/torder-tablet-bluetooth"
 ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
