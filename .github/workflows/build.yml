@@ -31,7 +31,11 @@ jobs:
       - name: Copy userpatches and DTB
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
-          sed -i 's/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y/' armbian-build/config/kernel/linux-rk35xx-vendor.config
+          if grep -q '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' armbian-build/config/kernel/linux-rk35xx-vendor.config; then
+            sed -i 's/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y/' armbian-build/config/kernel/linux-rk35xx-vendor.config
+          elif ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y$' armbian-build/config/kernel/linux-rk35xx-vendor.config; then
+            echo 'CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y' >> armbian-build/config/kernel/linux-rk35xx-vendor.config
+          fi
           grep '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y$' armbian-build/config/kernel/linux-rk35xx-vendor.config
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
