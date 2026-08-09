@@ -134,77 +134,192 @@ if [ -f "${TRACKER_EXTRACT}" ]; then
 fi
 
 # ============================================================
-# Fix 7: Power button lock screen & backlight control
+# Fix 7: Power button lock screen, backlight, and touch wake
 # ============================================================
-# Power button: lock screen + turn off backlight
-# Press again: restore backlight (wake)
-cat > "${SDCARD}/usr/local/bin/lockscreen-monitor.sh" << 'PWREOF'
-#!/bin/bash
-BACKLIGHT="/sys/class/backlight/backlight/brightness"
-MAX_BRIGHT=$(cat /sys/class/backlight/backlight/max_brightness)
+mkdir -p "${SDCARD}/usr/local/sbin" "${SDCARD}/etc/systemd/system" "${SDCARD}/etc/systemd/logind.conf.d"
+cat > "${SDCARD}/usr/local/sbin/powerkey-backlight-toggle.py" << 'PWREOF'
+#!/usr/bin/env python3
+import glob
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
 
-# Wait for evtest to be available
-sleep 5
+KEY_POWER = 116
+EV_KEY = 1
+BACKLIGHT_DIR = "/sys/class/backlight/backlight"
+STATE_FILE = "/run/powerkey-backlight-toggle.brightness"
+DEFAULT_RESTORE = 80
+DEBOUNCE_SECONDS = 0.3
+TOUCH_POWER_CONTROLS = [
+    "/sys/devices/platform/fe5a0000.i2c/power/control",
+    "/sys/devices/platform/fe5a0000.i2c/i2c-1/1-0040/power/control",
+    "/sys/devices/platform/fe5a0000.i2c/i2c-1/1-0040/input/input2/power/control",
+    "/sys/devices/platform/fe5a0000.i2c/i2c-1/1-0040/input/input2/event2/power/control",
+]
 
-# Check if evtest is available
-if ! command -v evtest &>/dev/null; then
-    apt-get install -y evtest &>/dev/null
-fi
 
-# Grab power key device exclusively
-POWER_DEV=""
-for dev in /dev/input/event*; do
-    if evtest --query "$dev" EV_KEY KEY_POWER 2>/dev/null; then
-        POWER_DEV="$dev"
-        break
-    fi
-done
+def find_power_device():
+    preferred = sorted(glob.glob("/dev/input/by-path/*rk805-pwrkey-event"))
+    preferred += sorted(glob.glob("/dev/input/by-path/*pwrkey-event"))
+    for path in preferred:
+        return path
+    for path in sorted(glob.glob("/dev/input/event*")):
+        try:
+            event = os.path.basename(path)
+            with open(f"/sys/class/input/{event}/device/name") as f:
+                name = f.read().strip().lower()
+            if "pwrkey" in name or "power" in name:
+                return path
+        except OSError:
+            pass
+    raise FileNotFoundError("power key input device not found")
 
-if [ -z "$POWER_DEV" ]; then
-    echo "Power key device not found"
-    exit 1
-fi
 
-echo "Monitoring power key: $POWER_DEV"
+def read_int(path, default=0):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except Exception:
+        return default
 
-evtest --grab "$POWER_DEV" | while read line; do
-    if echo "$line" | grep -q "code 116 (KEY_POWER), value 1"; then
-        BL=$(cat "$BACKLIGHT" 2>/dev/null)
-        if [ "$BL" -eq 0 ]; then
-            echo "$MAX_BRIGHT" > "$BACKLIGHT"
-        else
-            SESSION_ID=$(loginctl list-sessions --no-legend | grep armbian | awk '{print $1}')
-            if [ -n "$SESSION_ID" ]; then
-                loginctl lock-session "$SESSION_ID"
-            fi
-            sleep 0.3
-            echo 0 > "$BACKLIGHT"
-        fi
-    fi
-done
+
+def write_value(path, value):
+    try:
+        with open(path, "w") as f:
+            f.write(str(value))
+    except OSError as exc:
+        print(f"failed to write {path}: {exc}", file=sys.stderr, flush=True)
+
+
+def keep_touch_power_on():
+    for path in TOUCH_POWER_CONTROLS:
+        try:
+            with open(path, "w") as f:
+                f.write("on")
+        except OSError:
+            pass
+
+
+def max_brightness():
+    return max(1, read_int(os.path.join(BACKLIGHT_DIR, "max_brightness"), 255))
+
+
+def brightness():
+    return read_int(os.path.join(BACKLIGHT_DIR, "brightness"), 0)
+
+
+def bl_power():
+    return read_int(os.path.join(BACKLIGHT_DIR, "bl_power"), 0)
+
+
+def save_brightness(value):
+    value = max(1, min(value, max_brightness()))
+    with open(STATE_FILE, "w") as f:
+        f.write(str(value))
+
+
+def restore_backlight():
+    keep_touch_power_on()
+    value = read_int(STATE_FILE, DEFAULT_RESTORE)
+    value = max(1, min(value, max_brightness()))
+    write_value(os.path.join(BACKLIGHT_DIR, "bl_power"), 0)
+    write_value(os.path.join(BACKLIGHT_DIR, "brightness"), value)
+    keep_touch_power_on()
+    print(f"restored backlight to {value}", flush=True)
+
+
+def lock_user_sessions():
+    try:
+        out = subprocess.check_output(["/usr/bin/loginctl", "list-sessions", "--no-legend"], text=True)
+    except Exception as exc:
+        print(f"failed to list sessions: {exc}", file=sys.stderr, flush=True)
+        return
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "1000":
+            subprocess.run(["/usr/bin/loginctl", "lock-session", parts[0]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"locked session {parts[0]}", flush=True)
+
+
+def blank_backlight():
+    keep_touch_power_on()
+    before = brightness()
+    if before > 0:
+        save_brightness(before)
+    lock_user_sessions()
+    write_value(os.path.join(BACKLIGHT_DIR, "bl_power"), 0)
+    write_value(os.path.join(BACKLIGHT_DIR, "brightness"), 0)
+    keep_touch_power_on()
+    print("blanked backlight", flush=True)
+
+
+def toggle_backlight():
+    if brightness() <= 0 or bl_power() != 0:
+        restore_backlight()
+    else:
+        blank_backlight()
+
+
+def main():
+    keep_touch_power_on()
+    device = find_power_device()
+    event_struct = struct.Struct("llHHi")
+    last_press = 0.0
+    print(f"listening on {device}", flush=True)
+    with open(device, "rb", buffering=0) as dev:
+        poller = select.poll()
+        poller.register(dev, select.POLLIN)
+        while True:
+            poller.poll()
+            data = dev.read(event_struct.size)
+            if len(data) != event_struct.size:
+                continue
+            _sec, _usec, ev_type, code, value = event_struct.unpack(data)
+            if ev_type == EV_KEY and code == KEY_POWER and value == 1:
+                now = time.monotonic()
+                if now - last_press >= DEBOUNCE_SECONDS:
+                    last_press = now
+                    toggle_backlight()
+
+
+if __name__ == "__main__":
+    main()
+
 PWREOF
-chmod 755 "${SDCARD}/usr/local/bin/lockscreen-monitor.sh"
+chmod 755 "${SDCARD}/usr/local/sbin/powerkey-backlight-toggle.py"
 
-cat > "${SDCARD}/etc/systemd/system/lockscreen-monitor.service" << 'SVCEOF'
+cat > "${SDCARD}/etc/systemd/system/powerkey-backlight-toggle.service" << 'SVCEOF'
 [Unit]
-Description=Power Key Lock Screen & Backlight Control
-After=multi-user.target
+Description=Power key lock screen, backlight, and touch wake handler
+After=systemd-logind.service graphical.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/lockscreen-monitor.sh
+ExecStart=/usr/local/sbin/powerkey-backlight-toggle.py
 Restart=always
-RestartSec=2
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
 SVCEOF
+chroot "${SDCARD}" /bin/bash -c "systemctl enable powerkey-backlight-toggle.service 2>/dev/null" || true
 
-chroot "${SDCARD}" /bin/bash -c "systemctl enable lockscreen-monitor.service 2>/dev/null" || true
+cat > "${SDCARD}/etc/systemd/logind.conf.d/90-powerkey-lock.conf" << 'LOGIND'
+[Login]
+HandlePowerKey=lock
+HandlePowerKeyLongPress=ignore
+LOGIND
 
-# Install evtest
-chroot "${SDCARD}" /bin/bash -c "apt-get install -y evtest 2>/dev/null" || true
 
-display_alert "Torder Tablet" "Power button lock screen & backlight control configured" "info"
+mkdir -p "${SDCARD}/etc/udev/rules.d"
+cat > "${SDCARD}/etc/udev/rules.d/99-touch-no-runtime-pm.rules" << 'UDEV'
+ACTION=="add|change", SUBSYSTEM=="i2c", KERNEL=="1-0040", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add|change", SUBSYSTEM=="input", ATTR{name}=="gsl3673_800x1280", TEST=="power/control", ATTR{power/control}="on"
+UDEV
+
+display_alert "Torder Tablet" "Power button lock screen, backlight, and touch wake configured" "info"
 
 display_alert "Torder Tablet" "GPU & performance optimizations applied" "info"
