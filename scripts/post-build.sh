@@ -124,6 +124,37 @@ fi
 sudo sed -i 's/^#*HandlePowerKey=.*/HandlePowerKey=ignore/' "$TMPDIR/etc/systemd/logind.conf"
 echo "HandlePowerKey=ignore"
 
+# ============================================================
+# Touchscreen auto-load
+# ============================================================
+# Add gsl3673 to /etc/modules-load.d/
+sudo mkdir -p "$TMPDIR/etc/modules-load.d"
+echo "gsl3673-800x1280" | sudo tee "$TMPDIR/etc/modules-load.d/touchscreen.conf" > /dev/null
+# Also add to /etc/modules as fallback
+if ! grep -q "gsl3673-800x1280" "$TMPDIR/etc/modules" 2>/dev/null; then
+    echo "gsl3673-800x1280" | sudo tee -a "$TMPDIR/etc/modules" > /dev/null
+fi
+echo "Touchscreen auto-load configured"
+
+# ============================================================
+# WiFi firmware fixes
+# ============================================================
+# Create symlinks for firmware paths the module expects
+FIRMWARE_DIR="$TMPDIR/lib/firmware"
+if [ -d "$FIRMWARE_DIR/uwe5621ds" ]; then
+    # wcnmodem_2ant.bin -> wcnmodem.bin
+    sudo ln -sf wcnmodem.bin "$FIRMWARE_DIR/uwe5621ds/wcnmodem_2ant.bin" 2>/dev/null || true
+    # Copy firmware to root firmware dir for module path
+    sudo cp "$FIRMWARE_DIR/uwe5621ds/wifi_56630001_2ant.ini" "$FIRMWARE_DIR/" 2>/dev/null || true
+    sudo cp "$FIRMWARE_DIR/uwe5621ds/wcnmodem.bin" "$FIRMWARE_DIR/" 2>/dev/null || true
+    sudo cp "$FIRMWARE_DIR/uwe5621ds/wcnmodem_2ant.bin" "$FIRMWARE_DIR/" 2>/dev/null || true
+    echo "WiFi firmware symlinks created"
+fi
+
+# Fix bnep module version by depmod
+sudo chroot "$TMPDIR" depmod -a 6.1.115-vendor-rk35xx 2>/dev/null || true
+echo "depmod run"
+
 # Verify
 echo "=== Verify ==="
 md5sum "$TMPDIR/boot/dtb/rockchip/rk3566-torder-tablet.dtb" 2>/dev/null
