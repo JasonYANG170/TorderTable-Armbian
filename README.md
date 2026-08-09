@@ -73,6 +73,14 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
   - ZRAM swap (1GB LZ4)
 - **Files**: `99-torder-optimize.sh`, `zram-swap.service`
 
+### 6. Power Key Lock + Backlight
+- **Problem**: Power key did not reliably lock/wake the tablet desktop
+- **Fix**: Installs `powerkey-backlight-toggle.service`
+  - Power key locks the user session and dims backlight to `0`
+  - Second press restores the previous brightness
+  - Keeps `bl_power=0` and avoids synthetic input so the touch controller remains responsive
+- **Files**: `/usr/local/sbin/powerkey-backlight-toggle.py`, `powerkey-backlight-toggle.service`
+
 ## Architecture
 
 ```
