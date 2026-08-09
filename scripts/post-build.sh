@@ -261,7 +261,7 @@ sudo chmod 755 "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
 sudo tee "$TMPDIR/etc/systemd/system/powerkey-backlight-toggle.service" > /dev/null << 'SVCEOF'
 [Unit]
 Description=Power key lock screen, backlight, and touch wake handler
-After=systemd-logind.service graphical.target
+After=systemd-logind.service
 
 [Service]
 Type=simple
@@ -270,11 +270,11 @@ Restart=always
 RestartSec=1
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 SVCEOF
 sudo chroot "$TMPDIR" systemctl enable powerkey-backlight-toggle.service 2>/dev/null || true
-sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
-sudo ln -sf ../powerkey-backlight-toggle.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/powerkey-backlight-toggle.service"
+sudo mkdir -p "$TMPDIR/etc/systemd/system/graphical.target.wants"
+sudo ln -sf ../powerkey-backlight-toggle.service "$TMPDIR/etc/systemd/system/graphical.target.wants/powerkey-backlight-toggle.service"
 
 sudo tee "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf" > /dev/null << 'LOGIND'
 [Login]
