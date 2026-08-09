@@ -25,13 +25,14 @@ jobs:
       - name: Clone Armbian build system
         run: |
           git clone --depth=1 https://github.com/armbian/build.git armbian-build
-          mkdir -p armbian-build/userpatches/{config/boards,config/kernel,customize/images,dtb/rockchip}
+          mkdir -p armbian-build/userpatches/{config/boards,customize/images,dtb/rockchip}
           mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
 
       - name: Copy userpatches and DTB
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
-          cp config-6.1.115-vendor-rk35xx armbian-build/userpatches/config/kernel/linux-rk35xx-vendor.config
+          sed -i 's/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y/' armbian-build/config/kernel/linux-rk35xx-vendor.config
+          grep '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y$' armbian-build/config/kernel/linux-rk35xx-vendor.config
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
@@ -46,6 +47,7 @@ jobs:
           echo "Cache cleared for clean rootfs"
 
       - name: Build image
+        timeout-minutes: 150
         run: |
           cd armbian-build
           sudo ./compile.sh \
