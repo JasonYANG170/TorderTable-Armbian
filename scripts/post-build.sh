@@ -154,7 +154,73 @@ sudo ln -sf ../torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi
 echo "UWE5621DS Bluetooth configured"
 
 # ============================================================
-# 7. Power key lock screen, backlight, and touch wake
+# 7. Runtime performance policy
+# ============================================================
+sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/sysctl.d" "$TMPDIR/etc/dconf/db/local.d"
+sudo tee "$TMPDIR/usr/local/sbin/torder-performance" > /dev/null << 'PERFSCRIPTEOF'
+#!/bin/sh
+set -eu
+
+set_governor() {
+    governor_file="$1"
+    available_file="${governor_file%/governor}/available_governors"
+    [ -w "$governor_file" ] || return 0
+    if [ -r "$available_file" ] && grep -qw performance "$available_file"; then
+        echo performance > "$governor_file"
+    fi
+}
+
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+    [ -d "$policy" ] || continue
+    set_governor "$policy/scaling_governor"
+done
+
+for governor in /sys/class/devfreq/*/governor; do
+    [ -e "$governor" ] || continue
+    set_governor "$governor"
+done
+PERFSCRIPTEOF
+sudo chmod 755 "$TMPDIR/usr/local/sbin/torder-performance"
+
+sudo tee "$TMPDIR/etc/systemd/system/torder-performance.service" > /dev/null << 'PERFSERVICEEOF'
+[Unit]
+Description=Torder Tablet maximum performance policy
+After=systemd-modules-load.service
+Before=graphical.target display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/torder-performance
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+PERFSERVICEEOF
+sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
+sudo ln -sf ../torder-performance.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-performance.service"
+
+sudo tee "$TMPDIR/etc/sysctl.d/90-torder-performance.conf" > /dev/null << 'SYSCTLEOF'
+vm.swappiness=60
+vm.page-cluster=0
+vm.vfs_cache_pressure=50
+SYSCTLEOF
+
+sudo tee "$TMPDIR/etc/dconf/db/local.d/02-torder-performance" > /dev/null << 'DCONFEOF'
+[org/gnome/desktop/interface]
+enable-animations=false
+
+[org/gnome/software]
+download-updates=false
+DCONFEOF
+sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
+
+for svc in packagekit.service packagekit-offline-update.service fwupd.service; do
+    sudo chroot "$TMPDIR" systemctl mask "$svc" 2>/dev/null || true
+done
+echo "Maximum runtime performance policy installed"
+
+# ============================================================
+# 8. Power key lock screen, backlight, and touch wake
 # ============================================================
 sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/systemd/logind.conf.d"
 sudo tee "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py" > /dev/null << 'PYSCRIPTEOF'
