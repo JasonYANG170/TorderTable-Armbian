@@ -139,7 +139,6 @@ fi
 mkdir -p "${SDCARD}/usr/local/sbin" "${SDCARD}/etc/systemd/system" "${SDCARD}/etc/systemd/logind.conf.d"
 cat > "${SDCARD}/usr/local/sbin/powerkey-backlight-toggle.py" << 'PWREOF'
 #!/usr/bin/env python3
-import fcntl
 import glob
 import os
 import select
@@ -150,7 +149,6 @@ import time
 
 KEY_POWER = 116
 EV_KEY = 1
-EVIOCGRAB = 0x40044590
 BACKLIGHT_DIR = "/sys/class/backlight/backlight"
 STATE_FILE = "/run/powerkey-backlight-toggle.brightness"
 DEFAULT_RESTORE = 80
@@ -272,11 +270,6 @@ def main():
     last_press = 0.0
     print(f"listening on {device}", flush=True)
     with open(device, "rb", buffering=0) as dev:
-        try:
-            fcntl.ioctl(dev, EVIOCGRAB, 1)
-            print("grabbed power key device", flush=True)
-        except OSError as exc:
-            print(f"failed to grab power key device: {exc}", file=sys.stderr, flush=True)
         poller = select.poll()
         poller.register(dev, select.POLLIN)
         while True:
