@@ -83,6 +83,7 @@ echo "initramfs rebuilt"
 # ============================================================
 sudo mkdir -p "$TMPDIR/etc/modules-load.d"
 echo "gsl3673-800x1280" | sudo tee "$TMPDIR/etc/modules-load.d/touchscreen.conf" > /dev/null
+echo "sprdbt_tty" | sudo tee "$TMPDIR/etc/modules-load.d/uwe5622-bluetooth.conf" > /dev/null
 if ! grep -q "gsl3673-800x1280" "$TMPDIR/etc/modules" 2>/dev/null; then
     echo "gsl3673-800x1280" | sudo tee -a "$TMPDIR/etc/modules" > /dev/null
 fi
@@ -95,9 +96,10 @@ FW="$TMPDIR/lib/firmware"
 if [ -d "$FW/uwe5621ds" ]; then
     sudo ln -sf wcnmodem.bin "$FW/uwe5621ds/wcnmodem_2ant.bin" 2>/dev/null || true
     sudo cp "$FW/uwe5621ds/wifi_56630001_2ant.ini" "$FW/" 2>/dev/null || true
+    sudo cp "$FW/uwe5621ds/wifi_56630001_3ant.ini" "$FW/" 2>/dev/null || true
     sudo cp "$FW/uwe5621ds/wcnmodem.bin" "$FW/" 2>/dev/null || true
     sudo cp "$FW/uwe5621ds/wcnmodem_2ant.bin" "$FW/" 2>/dev/null || true
-    echo "WiFi firmware symlinks created"
+    echo "WiFi/Bluetooth firmware and drivers configured"
 fi
 
 # ============================================================
@@ -333,11 +335,13 @@ fi
 echo "=== Verify ==="
 grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
+cat "$TMPDIR/etc/modules-load.d/uwe5622-bluetooth.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
 ls "$TMPDIR/etc/systemd/system/powerkey-backlight-toggle.service"
 ls "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 ls "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules"
 ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
+ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
 
 # Cleanup
 sudo umount "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys" 2>/dev/null || true
