@@ -425,7 +425,7 @@ ls "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules"
 ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
 ls "$TMPDIR/usr/bin/hciattach_opi"
-ls "$TMPDIR/usr/local/sbin/torder-tablet-bluetooth"
+ls "$TMPDIR/usr/bin/torder-tablet-bluetooth"
 ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 
 # Cleanup
