@@ -139,6 +139,7 @@ fi
 mkdir -p "${SDCARD}/usr/local/sbin" "${SDCARD}/etc/systemd/system" "${SDCARD}/etc/systemd/logind.conf.d"
 cat > "${SDCARD}/usr/local/sbin/powerkey-backlight-toggle.py" << 'PWREOF'
 #!/usr/bin/env python3
+import fcntl
 import glob
 import os
 import select
@@ -149,6 +150,7 @@ import time
 
 KEY_POWER = 116
 EV_KEY = 1
+EVIOCGRAB = 0x40044590
 BACKLIGHT_DIR = "/sys/class/backlight/backlight"
 STATE_FILE = "/run/powerkey-backlight-toggle.brightness"
 DEFAULT_RESTORE = 80
@@ -270,6 +272,11 @@ def main():
     last_press = 0.0
     print(f"listening on {device}", flush=True)
     with open(device, "rb", buffering=0) as dev:
+        try:
+            fcntl.ioctl(dev, EVIOCGRAB, 1)
+            print("grabbed power key device", flush=True)
+        except OSError as exc:
+            print(f"failed to grab power key device: {exc}", file=sys.stderr, flush=True)
         poller = select.poll()
         poller.register(dev, select.POLLIN)
         while True:
@@ -306,10 +313,12 @@ RestartSec=1
 WantedBy=multi-user.target
 SVCEOF
 chroot "${SDCARD}" /bin/bash -c "systemctl enable powerkey-backlight-toggle.service 2>/dev/null" || true
+mkdir -p "${SDCARD}/etc/systemd/system/multi-user.target.wants"
+ln -sf ../powerkey-backlight-toggle.service "${SDCARD}/etc/systemd/system/multi-user.target.wants/powerkey-backlight-toggle.service"
 
 cat > "${SDCARD}/etc/systemd/logind.conf.d/90-powerkey-lock.conf" << 'LOGIND'
 [Login]
-HandlePowerKey=lock
+HandlePowerKey=ignore
 HandlePowerKeyLongPress=ignore
 LOGIND
 
