@@ -294,7 +294,7 @@ chmod 755 "${SDCARD}/usr/local/sbin/powerkey-backlight-toggle.py"
 cat > "${SDCARD}/etc/systemd/system/powerkey-backlight-toggle.service" << 'SVCEOF'
 [Unit]
 Description=Power key lock screen, backlight, and touch wake handler
-After=systemd-logind.service graphical.target
+After=systemd-logind.service
 
 [Service]
 Type=simple
@@ -303,11 +303,11 @@ Restart=always
 RestartSec=1
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 SVCEOF
 chroot "${SDCARD}" /bin/bash -c "systemctl enable powerkey-backlight-toggle.service 2>/dev/null" || true
-mkdir -p "${SDCARD}/etc/systemd/system/multi-user.target.wants"
-ln -sf ../powerkey-backlight-toggle.service "${SDCARD}/etc/systemd/system/multi-user.target.wants/powerkey-backlight-toggle.service"
+mkdir -p "${SDCARD}/etc/systemd/system/graphical.target.wants"
+ln -sf ../powerkey-backlight-toggle.service "${SDCARD}/etc/systemd/system/graphical.target.wants/powerkey-backlight-toggle.service"
 
 cat > "${SDCARD}/etc/systemd/logind.conf.d/90-powerkey-lock.conf" << 'LOGIND'
 [Login]
