@@ -14,6 +14,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Validate build inputs
+        run: |
+          bash -n scripts/post-build.sh
+          bash -n assets/uwe5621ds/torder-wifi-mac
+          echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          test "$(grep -c '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' config-6.1.115-vendor-rk35xx)" -eq 1
+          ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' config-6.1.115-vendor-rk35xx
+          ! grep -Eq '^/memreserve/|^[[:space:]]*serial-number[[:space:]]*=|local-mac-address|linux,initrd-(start|end)' \
+            userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
+
       - name: Free space
         uses: jlumbroso/free-disk-space@main
         with:
@@ -31,12 +41,13 @@ jobs:
       - name: Copy userpatches and DTB
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
-          if grep -q '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' armbian-build/config/kernel/linux-rk35xx-vendor.config; then
-            sed -i 's/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y/' armbian-build/config/kernel/linux-rk35xx-vendor.config
-          elif ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y$' armbian-build/config/kernel/linux-rk35xx-vendor.config; then
-            echo 'CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y' >> armbian-build/config/kernel/linux-rk35xx-vendor.config
-          fi
-          grep '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=y$' armbian-build/config/kernel/linux-rk35xx-vendor.config
+          sed -i \
+            -e '/^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=/d' \
+            -e '/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/d' \
+            armbian-build/config/kernel/linux-rk35xx-vendor.config
+          echo '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set' >> armbian-build/config/kernel/linux-rk35xx-vendor.config
+          test "$(grep -c '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' armbian-build/config/kernel/linux-rk35xx-vendor.config)" -eq 1
+          ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' armbian-build/config/kernel/linux-rk35xx-vendor.config
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
@@ -61,7 +72,7 @@ jobs:
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \
             KERNEL_CONFIGURE=no SHARE_LOG=no
 
-      - name: Post-build - fix DTB PARTLABEL boot services
+      - name: Post-build - install device fixes
         run: |
           chmod +x scripts/post-build.sh
           sudo bash scripts/post-build.sh armbian-build/output/images
@@ -98,9 +109,10 @@ jobs:
             **OS**: Ubuntu Noble 24.04 (GNOME)
 
             ### Features
-            - PARTLABEL fix (reliable reboot)
+            - Filesystem UUID boot (reliable first boot and reboot)
             - GPU Panfrost acceleration
             - Power key lockscreen + backlight control
+            - UWE5621DS dual-band WiFi, Bluetooth, and hotspot support
             - GPT partition with SPL blobs
 
             ### Flash
