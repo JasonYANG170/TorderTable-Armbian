@@ -92,7 +92,7 @@ jobs:
             DESKTOP_ENVIRONMENT=gnome \
             DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \
-            KERNEL_CONFIGURE=no SHARE_LOG=no
+            KERNEL_CONFIGURE=no PREFER_DOCKER=no SHARE_LOG=no
 
       - name: Post-build - install device fixes
         run: |
