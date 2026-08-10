@@ -1,5 +1,11 @@
 name: Build Armbian
 
+env:
+  # These are the exact build framework and kernel revisions used by the
+  # extracted image whose UWE5621DS WiFi scan and hotspot are known to work.
+  ARMBIAN_BUILD_COMMIT: 676832645ddde2e463b689e55fdd7ac81590f1ff
+  ROCKCHIP_KERNEL_COMMIT: 41da3e69e16b9de57eca897215e8b0adc6efdc8b
+
 on:
   workflow_dispatch:
   push:
@@ -19,8 +25,18 @@ jobs:
           bash -n scripts/post-build.sh
           bash -n assets/uwe5621ds/torder-wifi-mac
           echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
-          test "$(grep -c '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' config-6.1.115-vendor-rk35xx)" -eq 1
-          ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' config-6.1.115-vendor-rk35xx
+          echo '095d5cfcdcaaaa4e13bb5a09fbeb749ce5bf4780dfa8a0ff4fed5784cff87ee0  config-6.1.115-vendor-rk35xx' | sha256sum --check -
+          for option in \
+            'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
+            'CONFIG_RK_WIFI_DEVICE_UWE5621=y' \
+            'CONFIG_RK_WIFI_DEVICE_UWE5622=y' \
+            'CONFIG_WLAN_UWE5621=m' \
+            'CONFIG_WLAN_UWE5622=m' \
+            'CONFIG_SPRDWL_NG=m' \
+            'CONFIG_TTY_OVERY_SDIO=m' \
+            '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set'; do
+            test "$(grep -Fxc "$option" config-6.1.115-vendor-rk35xx)" -eq 1
+          done
           ! grep -Eq '^/memreserve/|^[[:space:]]*serial-number[[:space:]]*=|local-mac-address|linux,initrd-(start|end)' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
 
@@ -34,20 +50,24 @@ jobs:
 
       - name: Clone Armbian build system
         run: |
-          git clone --depth=1 https://github.com/armbian/build.git armbian-build
+          git init armbian-build
+          git -C armbian-build remote add origin https://github.com/armbian/build.git
+          git -C armbian-build fetch --depth=1 origin "$ARMBIAN_BUILD_COMMIT"
+          git -C armbian-build checkout --detach FETCH_HEAD
+          test "$(git -C armbian-build rev-parse HEAD)" = "$ARMBIAN_BUILD_COMMIT"
+          sed -i \
+            "s#KERNELBRANCH='branch:rk-6.1-rkr5.1'#KERNELBRANCH='commit:${ROCKCHIP_KERNEL_COMMIT}'#" \
+            armbian-build/config/sources/families/rk35xx.conf
+          test "$(grep -c "KERNELBRANCH='commit:${ROCKCHIP_KERNEL_COMMIT}'" \
+            armbian-build/config/sources/families/rk35xx.conf)" -eq 1
           mkdir -p armbian-build/userpatches/{config/boards,customize/images,dtb/rockchip}
           mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
 
       - name: Copy userpatches and DTB
         run: |
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
-          sed -i \
-            -e '/^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=/d' \
-            -e '/^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$/d' \
-            armbian-build/config/kernel/linux-rk35xx-vendor.config
-          echo '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set' >> armbian-build/config/kernel/linux-rk35xx-vendor.config
-          test "$(grep -c '^# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set$' armbian-build/config/kernel/linux-rk35xx-vendor.config)" -eq 1
-          ! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' armbian-build/config/kernel/linux-rk35xx-vendor.config
+          install -m 644 config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
+          cmp config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
@@ -67,6 +87,7 @@ jobs:
           cd armbian-build
           sudo ./compile.sh \
             BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
+            KERNELBRANCH="commit:${ROCKCHIP_KERNEL_COMMIT}" \
             BUILD_DESKTOP=yes BUILD_MINIMAL=no \
             DESKTOP_ENVIRONMENT=gnome \
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \

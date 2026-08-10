@@ -460,8 +460,28 @@ echo "=== Verify ==="
 grep -Fx "rootdev=UUID=$ROOT_UUID" "$TMPDIR/boot/armbianEnv.txt"
 KERNEL_CONFIG=$(find "$TMPDIR/boot" -maxdepth 1 -type f -name 'config-*-vendor-rk35xx' -print -quit)
 test -n "$KERNEL_CONFIG"
-grep -Fx '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set' "$KERNEL_CONFIG"
-! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' "$KERNEL_CONFIG"
+for option in \
+    'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
+    'CONFIG_RK_WIFI_DEVICE_UWE5621=y' \
+    'CONFIG_RK_WIFI_DEVICE_UWE5622=y' \
+    'CONFIG_WLAN_UWE5621=m' \
+    'CONFIG_WLAN_UWE5622=m' \
+    'CONFIG_SPRDWL_NG=m' \
+    'CONFIG_TTY_OVERY_SDIO=m' \
+    '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set'; do
+    grep -Fx "$option" "$KERNEL_CONFIG"
+done
+
+# The working image builds the shared WCN BSP into vmlinux. sprdwl_ng must not
+# depend on a second BSP module, which probes the same bus channels twice and
+# leaves a non-functional wlan0 behind.
+SPRDWL_MODULE=$(find "$TMPDIR/lib/modules" -type f -name 'sprdwl_ng.ko*' -print -quit)
+test -n "$SPRDWL_MODULE"
+SPRDWL_SRCVERSION=$(modinfo -F srcversion "$SPRDWL_MODULE")
+SPRDWL_DEPENDS=$(modinfo -F depends "$SPRDWL_MODULE")
+test "$SPRDWL_SRCVERSION" = 'C498F76D501D64389B2EA77'
+test -z "$SPRDWL_DEPENDS"
+echo "Verified sprdwl_ng srcversion=$SPRDWL_SRCVERSION with built-in WCN BSP"
 grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
