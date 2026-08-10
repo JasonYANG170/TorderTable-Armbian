@@ -34,15 +34,22 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 ### Local Build
 
 ```bash
-# Clone Armbian build system
-git clone --depth=1 https://github.com/armbian/build.git
+# Check out the same Armbian revision as the working reference image
+git init build
 cd build
+git remote add origin https://github.com/armbian/build.git
+git fetch --depth=1 origin 676832645ddde2e463b689e55fdd7ac81590f1ff
+git checkout --detach FETCH_HEAD
 
-# Copy userpatches
+# Copy userpatches and the complete working kernel configuration
 cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
+cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
+  config/kernel/linux-rk35xx-vendor.config
 
 # Build desktop image
-./compile.sh BOARD=torder-tablet BRANCH=vendor RELEASE=noble BUILD_DESKTOP=yes KERNEL_CONFIGURE=no
+./compile.sh BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
+  KERNELBRANCH=commit:41da3e69e16b9de57eca897215e8b0adc6efdc8b \
+  BUILD_DESKTOP=yes KERNEL_CONFIGURE=no
 ```
 
 ## Fixes Applied
@@ -52,8 +59,9 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
 - **Fix**: Writes the root filesystem UUID to both `armbianEnv.txt` and DTB bootargs
 
 ### 2. UWE5621DS WiFi and Bluetooth
-- **Problem**: WiFi cannot scan with an invalid MAC, and optional PMF prevents AP startup
-- **Fix**: Generates a stable per-device MAC before driver probing and disables PMF for WPA2 hotspots
+- **Problem**: A newer build changed the WCN BSP from built-in to a module; `sprdwl_ng` then initialized the shared bus twice, failed probing, and left WiFi unable to scan or create a hotspot
+- **Fix**: Pins the known-working Armbian/kernel revisions, applies the full extracted kernel configuration, generates a stable per-device MAC before probing, and disables PMF for WPA2 hotspots
+- **CI check**: Rejects an image unless the WCN BSP is built in and `sprdwl_ng` matches the working driver source version with no module dependency
 - **Files**: `torder-wifi-mac.service`, `90-torder-wifi.conf`, UWE5621DS firmware assets
 
 ### 3. GPU Panfrost Fix
