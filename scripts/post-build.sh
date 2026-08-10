@@ -1,15 +1,41 @@
 #!/bin/bash
-# Post-build: fix boot, DTB, PARTLABEL, touchscreen, WiFi, lockscreen
-set -e
+# Post-build: install the board DTB, boot settings, hardware assets, and services.
+set -euo pipefail
 
-WORK="$1"
-IMG="$2"
+WORK="${1:?Usage: post-build.sh IMAGE_DIRECTORY [IMAGE]}"
+IMG="${2:-}"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
+LOOP=""
+TMPDIR=""
+
+cleanup() {
+    local status=$?
+    set +e
+    if [ -n "${TMPDIR:-}" ]; then
+        for path in "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys"; do
+            mountpoint -q "$path" && sudo umount "$path"
+        done
+        mountpoint -q "$TMPDIR" && sudo umount "$TMPDIR"
+        rmdir "$TMPDIR" 2>/dev/null || true
+    fi
+    if [ -n "${LOOP:-}" ]; then
+        sudo losetup -d "$LOOP" 2>/dev/null || true
+    fi
+    TMPDIR=""
+    LOOP=""
+    set -e
+    return "$status"
+}
+
+trap cleanup EXIT
 
 if [ -z "$IMG" ]; then
-    IMG=$(find "$WORK" -name "*.img" -not -name "*.img.*" | head -1)
+    IMG=$(find "$WORK" -name "*.img" -not -name "*.img.*" -print -quit)
 fi
+
+test -n "$IMG"
+test -f "$IMG"
 
 echo "Image: $IMG"
 
@@ -17,6 +43,9 @@ DTB_SRC="$WORK/../../userpatches/dtb/rockchip/rk3566-torder-tablet.dtb"
 if [ ! -f "$DTB_SRC" ]; then
     DTB_SRC="$WORK/../../../../TorderTable-Armbian/dtb/rockchip/rk3566-torder-tablet.dtb"
 fi
+test -f "$DTB_SRC"
+command -v fdtget > /dev/null
+command -v fdtput > /dev/null
 
 LOOP=$(sudo losetup -fP --show "$IMG")
 sleep 1
@@ -24,21 +53,37 @@ TMPDIR=$(mktemp -d)
 sudo mount "${LOOP}p1" "$TMPDIR"
 echo "Mounted at $TMPDIR"
 
+ROOT_UUID=$(sudo blkid -s UUID -o value "${LOOP}p1")
+if ! [[ "$ROOT_UUID" =~ ^[0-9A-Fa-f-]+$ ]]; then
+    echo "Invalid root filesystem UUID: $ROOT_UUID" >&2
+    exit 1
+fi
+echo "Root filesystem UUID: $ROOT_UUID"
+
 # ============================================================
 # 1. DTB
 # ============================================================
 sudo mkdir -p "$TMPDIR/boot/dtb/rockchip"
 sudo mkdir -p "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip"
-if [ -f "$DTB_SRC" ]; then
-    sudo cp "$DTB_SRC" "$TMPDIR/boot/dtb/rockchip/"
-    sudo cp "$DTB_SRC" "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip/"
-    echo "DTB installed"
-fi
+for DTB_DST in \
+    "$TMPDIR/boot/dtb/rockchip/rk3566-torder-tablet.dtb" \
+    "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip/rk3566-torder-tablet.dtb"; do
+    sudo install -m 644 "$DTB_SRC" "$DTB_DST"
+    BOOTARGS=$(sudo fdtget -t s "$DTB_DST" /chosen bootargs)
+    PATCHED_BOOTARGS=$(printf '%s\n' "$BOOTARGS" | sed -E "s#(^|[[:space:]])root=[^[:space:]]+#\\1root=UUID=$ROOT_UUID#")
+    if [ "$PATCHED_BOOTARGS" = "$BOOTARGS" ]; then
+        echo "DTB bootargs does not contain a root= argument: $DTB_DST" >&2
+        exit 1
+    fi
+    sudo fdtput -t s "$DTB_DST" /chosen bootargs "$PATCHED_BOOTARGS"
+    sudo fdtget -t s "$DTB_DST" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
+done
+echo "DTB installed with filesystem UUID root"
 
 # Panthor overlay
 sudo mkdir -p "$TMPDIR/boot/dtb/rockchip/overlay"
 sudo mkdir -p "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip/overlay"
-PANTHOR=$(find "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip/overlay/" -name "*panthor*" 2>/dev/null | head -1)
+PANTHOR=$(find "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip/overlay/" -name "*panthor*" -print -quit 2>/dev/null)
 if [ -n "$PANTHOR" ]; then
     sudo cp "$PANTHOR" "$TMPDIR/boot/dtb/rockchip/overlay/" 2>/dev/null || true
     echo "Panthor overlay copied"
@@ -47,7 +92,7 @@ fi
 # ============================================================
 # 2. armbianEnv.txt
 # ============================================================
-sudo tee "$TMPDIR/boot/armbianEnv.txt" > /dev/null << 'EOF'
+sudo tee "$TMPDIR/boot/armbianEnv.txt" > /dev/null << EOF
 verbosity=1
 bootlogo=true
 console=both
@@ -55,33 +100,14 @@ extraargs=cma=256M
 overlay_prefix=rk35xx
 overlays=panthor-gpu
 fdtfile=rockchip/rk3566-torder-tablet.dtb
-rootdev=PARTLABEL=rootfs
+rootdev=UUID=$ROOT_UUID
 rootfstype=ext4
 usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u
 EOF
 echo "armbianEnv.txt set"
 
 # ============================================================
-# 3. PARTLABEL initramfs fix
-# ============================================================
-LOCAL_SCRIPT="$TMPDIR/usr/share/initramfs-tools/scripts/local"
-if [ -f "$LOCAL_SCRIPT" ]; then
-    sudo sed -i 's/PARTUUID=\*/PARTUUID=*|PARTLABEL=*/' "$LOCAL_SCRIPT"
-    echo "initramfs PARTLABEL patched"
-fi
-
-# ============================================================
-# 4. Rebuild initramfs
-# ============================================================
-sudo mount --bind /dev "$TMPDIR/dev" 2>/dev/null || true
-sudo mount --bind /proc "$TMPDIR/proc" 2>/dev/null || true
-sudo mount --bind /sys "$TMPDIR/sys" 2>/dev/null || true
-sudo chroot "$TMPDIR" mkinitramfs -o /boot/initrd.img 6.1.115-vendor-rk35xx 2>&1 || echo "mkinitramfs failed"
-sudo chroot "$TMPDIR" mkimage -A arm -O linux -T ramdisk -C gzip -d /boot/initrd.img /boot/uInitrd 2>&1 || echo "mkimage failed"
-echo "initramfs rebuilt"
-
-# ============================================================
-# 5. Touchscreen auto-load
+# 3. Touchscreen auto-load
 # ============================================================
 sudo mkdir -p "$TMPDIR/etc/modules-load.d"
 echo "gsl3673-800x1280" | sudo tee "$TMPDIR/etc/modules-load.d/touchscreen.conf" > /dev/null
@@ -91,17 +117,20 @@ fi
 echo "Touchscreen auto-load configured"
 
 # ============================================================
-# 6. WiFi firmware fixes
+# 4. WiFi and Bluetooth
 # ============================================================
 for file in hciattach_opi_arm64 wcnmodem.bin wcnmodem_2ant.bin \
     wifi_56630001_2ant.ini wifi_56630001_3ant.ini bt_configure_pskey.ini \
     bt_configure_rf.ini bt_configure_rf_marlin3e_2.ini bt_configure_rf_marlin3e_3.ini \
-    torder-tablet-bluetooth torder-tablet-bluetooth.service; do
+    torder-tablet-bluetooth torder-tablet-bluetooth.service \
+    torder-wifi-mac torder-wifi-mac.service 90-torder-wifi.conf; do
     test -f "$UWE_ASSETS/$file"
 done
 
 FW="$TMPDIR/lib/firmware"
-sudo install -d "$FW/uwe5621ds" "$TMPDIR/usr/bin" "$TMPDIR/usr/lib/systemd/system"
+sudo install -d "$FW/uwe5621ds" "$TMPDIR/usr/bin" "$TMPDIR/usr/local/sbin" \
+    "$TMPDIR/usr/lib/systemd/system" "$TMPDIR/etc/systemd/system" \
+    "$TMPDIR/etc/systemd/system/sysinit.target.wants" "$TMPDIR/etc/NetworkManager/conf.d"
 sudo install -m 644 "$UWE_ASSETS/wcnmodem.bin" "$FW/uwe5621ds/wcnmodem.bin"
 sudo install -m 644 "$UWE_ASSETS/wcnmodem_2ant.bin" "$FW/uwe5621ds/wcnmodem_2ant.bin"
 sudo install -m 644 "$UWE_ASSETS/wifi_56630001_2ant.ini" "$FW/uwe5621ds/wifi_56630001_2ant.ini"
@@ -118,10 +147,21 @@ sudo install -m 644 "$UWE_ASSETS/torder-tablet-bluetooth.service" "$TMPDIR/usr/l
 sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
 sudo ln -sf /usr/lib/systemd/system/torder-tablet-bluetooth.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/torder-tablet-bluetooth.service"
 
+# Never ship a captured factory MAC. Generate a stable per-device address before
+# udev or modules can probe sprdwl_ng on first boot.
+sudo rm -f "$FW/unisoc_wifi_mac.txt"
+sudo install -m 755 "$UWE_ASSETS/torder-wifi-mac" "$TMPDIR/usr/local/sbin/torder-wifi-mac"
+sudo install -m 644 "$UWE_ASSETS/torder-wifi-mac.service" "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
+sudo ln -sf ../torder-wifi-mac.service "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service"
+
+# The driver can run an AP but cannot set the default IGTK required by optional
+# PMF. NetworkManager must create WPA2 hotspots without PMF on this device.
+sudo install -m 644 "$UWE_ASSETS/90-torder-wifi.conf" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
+
 echo "UWE5621DS WiFi and Bluetooth assets installed"
 
 # ============================================================
-# 7. Runtime performance policy
+# 5. Runtime performance policy
 # ============================================================
 sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/sysctl.d" "$TMPDIR/etc/dconf/db/local.d"
 sudo tee "$TMPDIR/usr/local/sbin/torder-performance" > /dev/null << 'PERFSCRIPTEOF'
@@ -187,7 +227,7 @@ done
 echo "Maximum runtime performance policy installed"
 
 # ============================================================
-# 8. Power key lock screen, backlight, and touch wake
+# 6. Power key lock screen, backlight, and touch wake
 # ============================================================
 sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/systemd/logind.conf.d"
 sudo tee "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py" > /dev/null << 'PYSCRIPTEOF'
@@ -378,7 +418,7 @@ UDEV
 echo "powerkey-backlight-toggle installed"
 
 # ============================================================
-# 10. GNOME power button = nothing (no shutdown dialog)
+# 7. GNOME power button = nothing (no shutdown dialog)
 # ============================================================
 # Set dconf defaults for GNOME power button
 sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d"
@@ -399,13 +439,13 @@ sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
 echo "GNOME power button set to nothing"
 
 # ============================================================
-# 10. depmod
+# 8. depmod
 # ============================================================
 sudo chroot "$TMPDIR" depmod -a 6.1.115-vendor-rk35xx 2>/dev/null || true
 echo "depmod done"
 
 # ============================================================
-# 11. GDM autologin
+# 9. GDM autologin
 # ============================================================
 GDM_CONF="$TMPDIR/etc/gdm3/custom.conf"
 if [ -f "$GDM_CONF" ]; then
@@ -417,6 +457,11 @@ fi
 # Verify
 # ============================================================
 echo "=== Verify ==="
+grep -Fx "rootdev=UUID=$ROOT_UUID" "$TMPDIR/boot/armbianEnv.txt"
+KERNEL_CONFIG=$(find "$TMPDIR/boot" -maxdepth 1 -type f -name 'config-*-vendor-rk35xx' -print -quit)
+test -n "$KERNEL_CONFIG"
+grep -Fx '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set' "$KERNEL_CONFIG"
+! grep -q '^CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR=' "$KERNEL_CONFIG"
 grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
@@ -428,14 +473,15 @@ ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
 ls "$TMPDIR/usr/bin/hciattach_opi"
 ls "$TMPDIR/usr/bin/torder-tablet-bluetooth"
 ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
+ls "$TMPDIR/usr/local/sbin/torder-wifi-mac"
+ls "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
+ls "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service"
+grep -Fx "wifi-sec.pmf=1" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
+test ! -e "$TMPDIR/lib/firmware/unisoc_wifi_mac.txt"
+test -x "$TMPDIR/usr/sbin/dnsmasq"
 
 # Cleanup
-sudo umount "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys" 2>/dev/null || true
-sudo umount "$TMPDIR"
-sudo losetup -d "$LOOP"
-rmdir "$TMPDIR"
-
-# GPT partition name
-sudo sfdisk --part-name "$IMG" 1 rootfs 2>/dev/null || echo "sfdisk will fix at runtime"
+cleanup
+trap - EXIT
 
 echo "Post-build complete!"
