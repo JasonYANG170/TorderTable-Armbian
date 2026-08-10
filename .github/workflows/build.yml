@@ -85,11 +85,12 @@ jobs:
         timeout-minutes: 150
         run: |
           cd armbian-build
-          sudo ./compile.sh \
+          ./compile.sh \
             BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
             KERNELBRANCH="commit:${ROCKCHIP_KERNEL_COMMIT}" \
             BUILD_DESKTOP=yes BUILD_MINIMAL=no \
             DESKTOP_ENVIRONMENT=gnome \
+            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
             DESKTOP_APPGROUPS_SELECTED="browsers editors" \
             KERNEL_CONFIGURE=no SHARE_LOG=no
 
