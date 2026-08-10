@@ -19,6 +19,8 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 - **Performance**: CPU/GPU locked at max frequency
 - **Display**: 100Hz refresh rate (overclocked from53Hz)
 - **Optimized**: Disabled Tracker, animations, heavy services
+- **Wireless**: UWE5621DS 2.4/5GHz WiFi, Bluetooth, and WPA2 hotspot support
+- **Power key**: Lock screen, backlight off, and touch-safe wake
 
 ## Build
 
@@ -45,26 +47,31 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
 
 ## Fixes Applied
 
-### 1. PARTLABEL Boot Fix
-- **Problem**: Reboot hangs in initramfs because GPT partition has no name
-- **Fix**: Sets GPT partition name to "rootfs" + patches initramfs scripts
+### 1. Filesystem UUID Boot Fix
+- **Problem**: PARTLABEL discovery can fail in initramfs after first-boot resize
+- **Fix**: Writes the root filesystem UUID to both `armbianEnv.txt` and DTB bootargs
 
-### 2. GPU Panfrost Fix
+### 2. UWE5621DS WiFi and Bluetooth
+- **Problem**: WiFi cannot scan with an invalid MAC, and optional PMF prevents AP startup
+- **Fix**: Generates a stable per-device MAC before driver probing and disables PMF for WPA2 hotspots
+- **Files**: `torder-wifi-mac.service`, `90-torder-wifi.conf`, UWE5621DS firmware assets
+
+### 3. GPU Panfrost Fix
 - **Problem**: Panfrost GPU page fault causing software rendering fallback
 - **Fix**: X11 configuration with DRI2, disabled PageFlip
 - **Files**: `/etc/X11/xorg.conf.d/20-panfrost.conf`
 
-### 3. Performance Optimization
+### 4. Performance Optimization
 - **Problem**: System laggy with default ondemand governor
 - **Fix**: CPU locked at1800MHz, GPU at800MHz (performance mode)
 - **Files**: `max-performance.service`
 
-### 4. Display Refresh Rate
+### 5. Display Refresh Rate
 - **Problem**: Panel runs at53Hz instead of60Hz
 - **Fix**: Pixel clock overclocked from60MHz to112.39MHz (100Hz)
 - **Files**: Device tree `rk3566-torder-tablet.dts`
 
-### 5. GNOME Optimization
+### 6. GNOME Optimization
 - **Problem**: GNOME too heavy for RK3566
 - **Fix**: 
   - Disabled Tracker file indexing
@@ -73,7 +80,7 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
   - ZRAM swap (1GB LZ4)
 - **Files**: `99-torder-optimize.sh`, `zram-swap.service`
 
-### 6. Power Key Lock + Backlight
+### 7. Power Key Lock + Backlight
 - **Problem**: Power key did not reliably lock/wake the tablet desktop
 - **Fix**: Installs `powerkey-backlight-toggle.service`
   - Service reads the RK805 power-key input device without taking exclusive control
@@ -86,14 +93,19 @@ cp -r /path/to/TorderTable-Armbian/userpatches/* userpatches/
 ## Architecture
 
 ```
+assets/uwe5621ds/
+|-- torder-wifi-mac              # Per-device MAC provisioning
+|-- torder-wifi-mac.service      # Runs before module and udev probing
+`-- 90-torder-wifi.conf          # UWE5621DS hotspot compatibility
+scripts/
+`-- post-build.sh                # Installs and verifies device fixes
 userpatches/
-├── config/boards/
-│   └── torder-tablet.csc          # Board config (desktop enabled)
-├── customize/images/
-│   ├── torder-tablet-partlabel-fix.sh   # PARTLABEL boot fix
-│   └── torder-tablet-gpu-perf-fix.sh    # GPU + performance fix
-└── patch/kernel/rk35xx-vendor-6.1/dt/
-    └── rk3566-torder-tablet.dts   # Device tree (100Hz display)
+|-- config/boards/
+|   `-- torder-tablet.csc         # Board config and image packages
+|-- customize/images/
+|   `-- torder-tablet-gpu-perf-fix.sh
+`-- patch/kernel/rk35xx-vendor-6.1/dt/
+    `-- rk3566-torder-tablet.dts  # Generic device tree
 ```
 
 ## Extracted Device Files
