@@ -49,7 +49,8 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 # Build desktop image
 ./compile.sh BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
   KERNELBRANCH=commit:41da3e69e16b9de57eca897215e8b0adc6efdc8b \
-  BUILD_DESKTOP=yes KERNEL_CONFIGURE=no
+  BUILD_DESKTOP=yes DESKTOP_ENVIRONMENT=gnome \
+  DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base KERNEL_CONFIGURE=no
 ```
 
 ## Fixes Applied
