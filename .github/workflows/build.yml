@@ -24,6 +24,10 @@ jobs:
         run: |
           bash -n scripts/post-build.sh
           bash -n assets/uwe5621ds/torder-wifi-mac
+          grep -F 'request_firmware(&fw, fw_path, dev)' \
+            userpatches/patch/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
+          grep -F 'sprdwl_init_mac_addr(dev, priv)' \
+            userpatches/patch/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
           echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
@@ -68,6 +72,7 @@ jobs:
           cp userpatches/config/boards/*.csc armbian-build/userpatches/config/boards/
           install -m 644 config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
           cmp config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
+          cp userpatches/patch/kernel/rk35xx-vendor-6.1/*.patch armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
