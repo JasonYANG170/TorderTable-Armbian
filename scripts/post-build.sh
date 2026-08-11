@@ -479,9 +479,17 @@ SPRDWL_MODULE=$(find "$TMPDIR/lib/modules" -type f -name 'sprdwl_ng.ko*' -print 
 test -n "$SPRDWL_MODULE"
 SPRDWL_SRCVERSION=$(modinfo -F srcversion "$SPRDWL_MODULE")
 SPRDWL_DEPENDS=$(modinfo -F depends "$SPRDWL_MODULE")
-test "$SPRDWL_SRCVERSION" = 'C498F76D501D64389B2EA77'
-test -z "$SPRDWL_DEPENDS"
-echo "Verified sprdwl_ng srcversion=$SPRDWL_SRCVERSION with built-in WCN BSP"
+echo "sprdwl_ng module=$SPRDWL_MODULE"
+echo "sprdwl_ng srcversion=${SPRDWL_SRCVERSION:-none} depends=${SPRDWL_DEPENDS:-none}"
+case ",$SPRDWL_DEPENDS," in
+    *,uwe5622_bsp_sdio,*)
+        echo "sprdwl_ng incorrectly depends on the modular WCN BSP" >&2
+        exit 1
+        ;;
+esac
+test -z "$(find "$TMPDIR/lib/modules" -type f -name 'uwe5622_bsp_sdio.ko*' -print -quit)"
+grep -aF 'unisoc_wifi_mac.txt' "$SPRDWL_MODULE" > /dev/null
+echo "Verified sprdwl_ng MAC provisioning with built-in WCN BSP"
 grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
