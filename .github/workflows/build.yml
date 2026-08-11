@@ -26,6 +26,8 @@ jobs:
           bash -n assets/uwe5621ds/torder-wifi-mac
           grep -F 'request_firmware(&fw, fw_path, dev)' \
             userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
+          grep -F '#include <linux/firmware.h>' \
+            userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
           grep -F 'sprdwl_init_mac_addr(dev, priv)' \
             userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
           echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
