@@ -63,7 +63,7 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 ### 2. UWE5621DS WiFi and Bluetooth
 - **Problem**: A newer build changed the WCN BSP from built-in to a module; `sprdwl_ng` then initialized the shared bus twice, failed probing, and left WiFi unable to scan or create a hotspot
 - **Fix**: Pins the known-working Armbian/kernel revisions, applies the full extracted kernel configuration, generates a stable per-device MAC before probing, and disables PMF for WPA2 hotspots
-- **CI check**: Rejects an image unless the WCN BSP is built in and `sprdwl_ng` matches the working driver source version with no module dependency
+- **CI check**: Rejects an image unless the WCN BSP is built in, `sprdwl_ng` has no modular BSP dependency, and the driver contains per-device MAC provisioning support
 - **Files**: `torder-wifi-mac.service`, `90-torder-wifi.conf`, UWE5621DS firmware assets
 
 ### 3. GPU Panfrost Fix
