@@ -8,13 +8,19 @@ address. Load the per-device address provisioned in /lib/firmware before
 creating the wireless interface, matching the behavior of the working image.
 
 ---
- drivers/net/wireless/uwe5622/unisocwifi/main.c | 41 +++++++++++++++++++
- 1 file changed, 41 insertions(+)
+ drivers/net/wireless/uwe5622/unisocwifi/main.c | 43 +++++++++++++++++++
+ 1 file changed, 43 insertions(+)
 
 diff --git a/drivers/net/wireless/uwe5622/unisocwifi/main.c b/drivers/net/wireless/uwe5622/unisocwifi/main.c
 index 46b9039519cd..59ad06f358f1 100644
 --- a/drivers/net/wireless/uwe5622/unisocwifi/main.c
 +++ b/drivers/net/wireless/uwe5622/unisocwifi/main.c
+@@ -18,3 +18,5 @@
++#include <linux/firmware.h>
++
+ #include "sprdwl.h"
+ #include "npi.h"
+ #include "cfg80211.h"
 @@ -1557,6 +1557,46 @@ static void sprdwl_init_debugfs(struct sprdwl_priv *priv)
  	sprdwl_intf_debugfs(priv, priv->debugfs);
  }
