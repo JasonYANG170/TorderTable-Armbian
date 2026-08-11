@@ -114,8 +114,9 @@ userpatches/
 |   `-- torder-tablet.csc         # Board config and image packages
 |-- customize/images/
 |   `-- torder-tablet-gpu-perf-fix.sh
-`-- patch/kernel/rk35xx-vendor-6.1/dt/
-    `-- rk3566-torder-tablet.dts  # Generic device tree
+`-- patch/kernel/rk35xx-vendor-6.1/
+    |-- uwe5621ds-load-device-mac.patch # Load the per-device WiFi MAC
+    `-- dt/rk3566-torder-tablet.dts     # Generic device tree
 ```
 
 ## Extracted Device Files
