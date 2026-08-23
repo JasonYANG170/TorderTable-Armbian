@@ -30,8 +30,9 @@ archive="${work_dir}/pylibfdt-${PYLIBFDT_VERSION}.tar.gz"
 source_dir="${work_dir}/source"
 wheel_dir="${work_dir}/wheel"
 unpack_dir="${work_dir}/unpack"
+venv_dir="${work_dir}/build-venv"
 
-rm -rf "${source_dir}" "${wheel_dir}" "${unpack_dir}"
+rm -rf "${source_dir}" "${wheel_dir}" "${unpack_dir}" "${venv_dir}"
 mkdir -p "${source_dir}" "${wheel_dir}" "${unpack_dir}"
 
 curl --fail --location --retry 3 --silent --show-error \
@@ -51,9 +52,21 @@ if grep -Fq 'PyInt_AsLong' "${interface_file}"; then
 	exit 1
 fi
 
+swig_version="$(swig -version | awk '/SWIG Version/ { print $3 }')"
+[[ "${swig_version}" == "4.0.2" ]] || {
+	printf 'Expected SWIG 4.0.2, found %s\n' "${swig_version}" >&2
+	exit 1
+}
+
+python3 -m venv "${venv_dir}"
+PIP_DISABLE_PIP_VERSION_CHECK=1 "${venv_dir}/bin/python" -m pip install \
+	--upgrade 'pip==25.3' 'setuptools==80.9.0' \
+	'setuptools_scm==8.1.0' 'packaging==24.2' 'tomli==2.2.1' \
+	'wheel==0.45.1'
 SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYLIBFDT="${PYLIBFDT_FIXED_VERSION}" \
-	PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip wheel \
-	--no-cache-dir --no-deps --wheel-dir "${wheel_dir}" "${source_dir}"
+	PIP_DISABLE_PIP_VERSION_CHECK=1 "${venv_dir}/bin/python" -m pip wheel \
+	--no-build-isolation --no-cache-dir --no-deps \
+	--wheel-dir "${wheel_dir}" "${source_dir}"
 
 mapfile -t wheels < <(find "${wheel_dir}" -maxdepth 1 -type f -name 'pylibfdt-*.whl' -print)
 [[ "${#wheels[@]}" -eq 1 ]]
@@ -75,7 +88,7 @@ if grep -Fq 'PyInt_AsLong' "${symbols_file}"; then
 	exit 1
 fi
 grep -Fq 'PyLong_AsLong' "${symbols_file}"
-PYTHONPATH="${unpack_dir}" python3 -c \
+PYTHONPATH="${unpack_dir}" "${venv_dir}/bin/python" -c \
 	'import libfdt; assert libfdt.Fdt; print("pylibfdt import OK:", libfdt.__file__)'
 
 if grep -Eq '^[[:space:]]*pylibfdt([[:space:]]|@|=)' "${requirements_file}"; then
