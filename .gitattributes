@@ -1,0 +1,2 @@
+assets/uwe5621ds/*.ini -text -diff
+userpatches/kernel/**/*.patch whitespace=-blank-at-eol,-space-before-tab
