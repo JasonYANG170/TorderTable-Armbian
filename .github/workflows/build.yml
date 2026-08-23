@@ -6,6 +6,7 @@ env:
   ARMBIAN_BUILD_COMMIT: 676832645ddde2e463b689e55fdd7ac81590f1ff
   ROCKCHIP_KERNEL_COMMIT: 41da3e69e16b9de57eca897215e8b0adc6efdc8b
   UWE5621DS_SOURCE_COMMIT: 4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3
+  PYLIBFDT_FIX_COMMIT: 5008d1d6a356b8d0a78060da2e1021507d529cff
   UWE5621DS_SRCVERSION: 50D3A59AC5058B3C5B7E57D
   UWE5621DS_2ANT_INI_SHA256: 7daa38ae65de45f47d21d9a381dfef295930ebd0c4a335dfed908075e03747d8
   UWE5621DS_3ANT_INI_SHA256: 66650cf7682c767a10399020e5294b74da233cdffee20310cdb005ae43b79b9f
@@ -28,6 +29,9 @@ jobs:
         run: |
           bash -n scripts/post-build.sh
           bash -n assets/uwe5621ds/torder-wifi-mac
+          bash -n scripts/prepare-pylibfdt.sh
+          grep -F "PYLIBFDT_FIX_COMMIT=\"$PYLIBFDT_FIX_COMMIT\"" \
+            scripts/prepare-pylibfdt.sh
           DRIVER_PATCH=userpatches/kernel/rk35xx-vendor-6.1/0001-uwe5621ds-rockchip-driver.patch
           MAC_PATCH=userpatches/kernel/rk35xx-vendor-6.1/0002-uwe5621ds-load-device-mac.patch
           test -f "$DRIVER_PATCH"
@@ -79,7 +83,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
-            binutils-aarch64-linux-gnu
+            binutils-aarch64-linux-gnu python3-dev swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-11 \
@@ -104,6 +108,12 @@ jobs:
           mkdir -p armbian-build/userpatches/{config/boards,customize/images,dtb/rockchip}
           mkdir -p armbian-build/userpatches/kernel/rk35xx-vendor-6.1
           mkdir -p armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt
+
+      - name: Pin Python 3 compatible pylibfdt
+        run: |
+          chmod +x scripts/prepare-pylibfdt.sh
+          scripts/prepare-pylibfdt.sh armbian-build
+          grep -F "dtc commit $PYLIBFDT_FIX_COMMIT" armbian-build/requirements.txt
 
       - name: Copy userpatches and DTB
         run: |
