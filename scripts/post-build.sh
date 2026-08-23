@@ -6,12 +6,23 @@ WORK="${1:?Usage: post-build.sh IMAGE_DIRECTORY [IMAGE]}"
 IMG="${2:-}"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
+KERNEL_VERSION="6.1.115-vendor-rk35xx"
+UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
+UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
+UWE5621DS_2ANT_INI_SHA256="7daa38ae65de45f47d21d9a381dfef295930ebd0c4a335dfed908075e03747d8"
+UWE5621DS_3ANT_INI_SHA256="66650cf7682c767a10399020e5294b74da233cdffee20310cdb005ae43b79b9f"
+UWE5621DS_WCN_SHA256="9aa13de426be49f5748506279796f6eddc3479af9d5bd9568170742f542e3605"
 LOOP=""
 TMPDIR=""
+VERIFY_DIR=""
+DIAGNOSTICS="$WORK/uwe5621ds-diagnostics.txt"
 
 cleanup() {
     local status=$?
     set +e
+    if [ "$status" -ne 0 ] && [ -n "${DIAGNOSTICS:-}" ]; then
+        printf 'result=FAIL exit_status=%s\n' "$status" >> "$DIAGNOSTICS" 2>/dev/null || true
+    fi
     if [ -n "${TMPDIR:-}" ]; then
         for path in "$TMPDIR/dev" "$TMPDIR/proc" "$TMPDIR/sys"; do
             mountpoint -q "$path" && sudo umount "$path"
@@ -22,8 +33,12 @@ cleanup() {
     if [ -n "${LOOP:-}" ]; then
         sudo losetup -d "$LOOP" 2>/dev/null || true
     fi
+    if [ -n "${VERIFY_DIR:-}" ] && [ -d "$VERIFY_DIR" ]; then
+        rm -rf -- "$VERIFY_DIR"
+    fi
     TMPDIR=""
     LOOP=""
+    VERIFY_DIR=""
     set -e
     return "$status"
 }
@@ -36,6 +51,14 @@ fi
 
 test -n "$IMG"
 test -f "$IMG"
+
+cat > "$DIAGNOSTICS" << EOF
+UWE5621DS image diagnostics
+driver_source_commit=$UWE5621DS_SOURCE_COMMIT
+driver_srcversion=$UWE5621DS_SRCVERSION
+kernel_version=$KERNEL_VERSION
+image=$IMG
+EOF
 
 echo "Image: $IMG"
 
@@ -59,6 +82,28 @@ if ! [[ "$ROOT_UUID" =~ ^[0-9A-Fa-f-]+$ ]]; then
     exit 1
 fi
 echo "Root filesystem UUID: $ROOT_UUID"
+
+# First-boot GPT expansion can replace the root partition and change its
+# PARTUUID/PARTLABEL. Keep every persistent root reference on the ext4 UUID and
+# normalize malformed duplicate commas in the generated mount options.
+FSTAB_FIXED=$(mktemp)
+if ! awk -v uuid="$ROOT_UUID" '
+    BEGIN { OFS = " "; roots = 0 }
+    $0 !~ /^[[:space:]]*#/ && $2 == "/" {
+        $1 = "UUID=" uuid
+        gsub(/,+/, ",", $4)
+        roots++
+    }
+    { print }
+    END { if (roots != 1) exit 1 }
+' "$TMPDIR/etc/fstab" > "$FSTAB_FIXED"; then
+    rm -f "$FSTAB_FIXED"
+    echo "Expected exactly one root entry in fstab" >&2
+    exit 1
+fi
+sudo install -m 644 "$FSTAB_FIXED" "$TMPDIR/etc/fstab"
+rm -f "$FSTAB_FIXED"
+echo "Root fstab entry pinned to filesystem UUID"
 
 # ============================================================
 # 1. DTB
@@ -441,7 +486,7 @@ echo "GNOME power button set to nothing"
 # ============================================================
 # 8. depmod
 # ============================================================
-sudo chroot "$TMPDIR" depmod -a 6.1.115-vendor-rk35xx 2>/dev/null || true
+sudo chroot "$TMPDIR" depmod -a "$KERNEL_VERSION" 2>/dev/null || true
 echo "depmod done"
 
 # ============================================================
@@ -458,9 +503,15 @@ fi
 # ============================================================
 echo "=== Verify ==="
 grep -Fx "rootdev=UUID=$ROOT_UUID" "$TMPDIR/boot/armbianEnv.txt"
+awk -v root="UUID=$ROOT_UUID" '
+    $0 !~ /^[[:space:]]*#/ && $2 == "/" && $1 == root && $4 !~ /,,/ { roots++ }
+    END { exit roots == 1 ? 0 : 1 }
+' "$TMPDIR/etc/fstab"
 KERNEL_CONFIG=$(find "$TMPDIR/boot" -maxdepth 1 -type f -name 'config-*-vendor-rk35xx' -print -quit)
 test -n "$KERNEL_CONFIG"
+grep -Eq '^CONFIG_CC_VERSION_TEXT="aarch64-linux-gnu-gcc .* 11\.4\.0"$' "$KERNEL_CONFIG"
 for option in \
+    'CONFIG_GCC_VERSION=110400' \
     'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
     'CONFIG_RK_WIFI_DEVICE_UWE5621=y' \
     'CONFIG_RK_WIFI_DEVICE_UWE5622=y' \
@@ -477,10 +528,52 @@ done
 # leaves a non-functional wlan0 behind.
 SPRDWL_MODULE=$(find "$TMPDIR/lib/modules" -type f -name 'sprdwl_ng.ko*' -print -quit)
 test -n "$SPRDWL_MODULE"
-SPRDWL_SRCVERSION=$(modinfo -F srcversion "$SPRDWL_MODULE")
-SPRDWL_DEPENDS=$(modinfo -F depends "$SPRDWL_MODULE")
+command -v modinfo > /dev/null
+command -v nm > /dev/null
+command -v strings > /dev/null
+command -v sha256sum > /dev/null
+
+VERIFY_DIR=$(mktemp -d)
+SPRDWL_RAW="$VERIFY_DIR/sprdwl_ng.ko"
+case "$SPRDWL_MODULE" in
+    *.ko)
+        cp "$SPRDWL_MODULE" "$SPRDWL_RAW"
+        ;;
+    *.ko.xz)
+        xz -dc "$SPRDWL_MODULE" > "$SPRDWL_RAW"
+        ;;
+    *.ko.zst)
+        zstd -dc "$SPRDWL_MODULE" > "$SPRDWL_RAW"
+        ;;
+    *.ko.gz)
+        gzip -dc "$SPRDWL_MODULE" > "$SPRDWL_RAW"
+        ;;
+    *)
+        echo "Unsupported sprdwl_ng module compression: $SPRDWL_MODULE" >&2
+        exit 1
+        ;;
+esac
+
+SPRDWL_NAME=$(modinfo -F name "$SPRDWL_RAW")
+SPRDWL_VERSION=$(modinfo -F version "$SPRDWL_RAW" || true)
+SPRDWL_SRCVERSION=$(modinfo -F srcversion "$SPRDWL_RAW")
+SPRDWL_VERMAGIC=$(modinfo -F vermagic "$SPRDWL_RAW")
+SPRDWL_DEPENDS=$(modinfo -F depends "$SPRDWL_RAW")
+SPRDWL_SHA256=$(sha256sum "$SPRDWL_RAW" | awk '{print $1}')
+test "$SPRDWL_NAME" = "sprdwl_ng"
+if [ "$SPRDWL_SRCVERSION" != "$UWE5621DS_SRCVERSION" ]; then
+    echo "Unexpected sprdwl_ng srcversion: $SPRDWL_SRCVERSION" >&2
+    exit 1
+fi
+case "$SPRDWL_VERMAGIC" in
+    "$KERNEL_VERSION "*) ;;
+    *)
+        echo "Unexpected sprdwl_ng vermagic: $SPRDWL_VERMAGIC" >&2
+        exit 1
+        ;;
+esac
 echo "sprdwl_ng module=$SPRDWL_MODULE"
-echo "sprdwl_ng srcversion=${SPRDWL_SRCVERSION:-none} depends=${SPRDWL_DEPENDS:-none}"
+echo "sprdwl_ng srcversion=$SPRDWL_SRCVERSION depends=${SPRDWL_DEPENDS:-none}"
 case ",$SPRDWL_DEPENDS," in
     *,uwe5622_bsp_sdio,*)
         echo "sprdwl_ng incorrectly depends on the modular WCN BSP" >&2
@@ -488,8 +581,75 @@ case ",$SPRDWL_DEPENDS," in
         ;;
 esac
 test -z "$(find "$TMPDIR/lib/modules" -type f -name 'uwe5622_bsp_sdio.ko*' -print -quit)"
-grep -aF 'unisoc_wifi_mac.txt' "$SPRDWL_MODULE" > /dev/null
-echo "Verified sprdwl_ng MAC provisioning with built-in WCN BSP"
+
+nm -a "$SPRDWL_RAW" > "$VERIFY_DIR/sprdwl_ng.nm"
+awk 'NF {print $NF}' "$VERIFY_DIR/sprdwl_ng.nm" > "$VERIFY_DIR/sprdwl_ng.symbols"
+for symbol in \
+    sprdwl_driver_init \
+    sprdwl_check_all_ifaces_for_up \
+    sprdwl_cfg80211_dump_station \
+    sprdwl_cfg80211_get_txpower; do
+    grep -Fx "$symbol" "$VERIFY_DIR/sprdwl_ng.symbols"
+done
+for symbol in unisoc_wlan_init random_mac_set; do
+    if grep -Eq "^${symbol}(\.[0-9]+)?$" "$VERIFY_DIR/sprdwl_ng.symbols"; then
+        echo "Forbidden UWE5622 symbol found: $symbol" >&2
+        exit 1
+    fi
+done
+grep -aF 'unisoc_wifi_mac.txt' "$SPRDWL_RAW" > /dev/null
+echo "Verified Rockchip UWE5621DS driver symbols and built-in WCN BSP"
+
+for ini in \
+    "$FW/uwe5621ds/wifi_56630001_2ant.ini" \
+    "$FW/wifi_56630001_2ant.ini"; do
+    printf '%s  %s\n' "$UWE5621DS_2ANT_INI_SHA256" "$ini" | sha256sum --check -
+done
+for ini in \
+    "$FW/uwe5621ds/wifi_56630001_3ant.ini" \
+    "$FW/wifi_56630001_3ant.ini"; do
+    printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" "$ini" | sha256sum --check -
+done
+printf '%s  %s\n' "$UWE5621DS_WCN_SHA256" \
+    "$FW/uwe5621ds/wcnmodem_2ant.bin" | sha256sum --check -
+strings "$FW/uwe5621ds/wcnmodem_2ant.bin" | \
+    grep -Fx 'Platform Version:MARLIN3E_20A_W21.47.4'
+strings "$FW/uwe5621ds/wcnmodem_2ant.bin" | \
+    grep -Fx 'Project Version:uwe5623_marlin3E_ott'
+
+FINAL_DTB="$TMPDIR/boot/dtb/rockchip/rk3566-torder-tablet.dtb"
+test "$(fdtget -t s "$FINAL_DTB" /sprd-wlan compatible)" = "sprd,unisoc-wifi"
+test "$(fdtget -t s "$FINAL_DTB" /sprd-wlan status)" = "okay"
+test "$(fdtget -t s "$FINAL_DTB" /uwe-bsp compatible)" = "unisoc,uwe_bsp"
+test "$(fdtget -t s "$FINAL_DTB" /uwe-bsp status)" = "okay"
+test "$(fdtget -t s "$FINAL_DTB" /uwe-bsp unisoc,btwf-file-name)" = \
+    "/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
+test "$(fdtget -t s "$FINAL_DTB" /sprd-mtty compatible)" = "sprd,mtty"
+test "$(fdtget -t s "$FINAL_DTB" /sprd-mtty status)" = "okay"
+fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
+
+{
+    printf 'root_filesystem_uuid=%s\n' "$ROOT_UUID"
+    printf 'module_name=%s\n' "$SPRDWL_NAME"
+    printf 'module_version=%s\n' "${SPRDWL_VERSION:-none}"
+    printf 'module_srcversion=%s\n' "$SPRDWL_SRCVERSION"
+    printf 'module_vermagic=%s\n' "$SPRDWL_VERMAGIC"
+    printf 'module_depends=%s\n' "${SPRDWL_DEPENDS:-none}"
+    printf 'module_sha256=%s\n' "$SPRDWL_SHA256"
+    printf 'required_symbols=%s\n' \
+        'sprdwl_driver_init sprdwl_check_all_ifaces_for_up sprdwl_cfg80211_dump_station sprdwl_cfg80211_get_txpower'
+    printf 'forbidden_symbols=absent: unisoc_wlan_init random_mac_set\n'
+    printf 'ini_2ant_sha256=%s\n' "$UWE5621DS_2ANT_INI_SHA256"
+    printf 'ini_3ant_sha256=%s\n' "$UWE5621DS_3ANT_INI_SHA256"
+    printf 'wcnmodem_2ant_sha256=%s\n' "$UWE5621DS_WCN_SHA256"
+    printf 'wcn_platform_version=%s\n' 'MARLIN3E_20A_W21.47.4'
+    printf 'wcn_project_version=%s\n' 'uwe5623_marlin3E_ott'
+    printf 'dtb_sprd_wlan=%s\n' "$(fdtget -t s "$FINAL_DTB" /sprd-wlan compatible)"
+    printf 'dtb_uwe_bsp=%s\n' "$(fdtget -t s "$FINAL_DTB" /uwe-bsp compatible)"
+    if command -v aarch64-linux-gnu-gcc > /dev/null; then
+        printf 'cross_compiler=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
+    fi
+} >> "$DIAGNOSTICS"
 grep HandlePowerKey "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 cat "$TMPDIR/etc/modules-load.d/touchscreen.conf"
 ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
@@ -504,9 +664,18 @@ ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 ls "$TMPDIR/usr/local/sbin/torder-wifi-mac"
 ls "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 ls "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service"
+grep -Fx 'DefaultDependencies=no' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
+grep -Fx 'After=local-fs.target' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
+grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service' \
+    "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
+test "$(readlink "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service")" = \
+    "../torder-wifi-mac.service"
 grep -Fx "wifi-sec.pmf=1" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
 test ! -e "$TMPDIR/lib/firmware/unisoc_wifi_mac.txt"
 test -x "$TMPDIR/usr/sbin/dnsmasq"
+
+printf 'result=PASS\n' >> "$DIAGNOSTICS"
+chmod 644 "$DIAGNOSTICS"
 
 # Cleanup
 cleanup
