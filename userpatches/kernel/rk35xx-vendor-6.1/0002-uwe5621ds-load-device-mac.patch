@@ -1,0 +1,93 @@
+From b9e79b2729ed67671edc36cff71dd4d5efb8d897 Mon Sep 17 00:00:00 2001
+From: Torder Tablet Build <build@torder.local>
+Date: Sun, 23 Aug 2026 21:48:47 +0800
+Subject: [PATCH] wifi: uwe5621ds: harden per-device MAC loading
+
+The Rockchip driver already loads unisoc_wifi_mac.txt before creating
+wlan0, but releases an uninitialized firmware pointer when the request
+fails and parses directly from a non-NUL-terminated firmware buffer.
+
+Use bounded parsing, reject invalid Ethernet addresses, and release the
+firmware object only after a successful request. Preserve the driver's
+40:45:da fallback prefix when provisioning is unavailable.
+
+---
+ .../net/wireless/uwe5622/unisocwifi/main.c    | 53 +++++++++----------
+ 1 file changed, 26 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/net/wireless/uwe5622/unisocwifi/main.c b/drivers/net/wireless/uwe5622/unisocwifi/main.c
+index 636ebc8..d449788 100755
+--- a/drivers/net/wireless/uwe5622/unisocwifi/main.c
++++ b/drivers/net/wireless/uwe5622/unisocwifi/main.c
+@@ -1601,45 +1601,44 @@ static void sprdwl_init_debugfs(struct sprdwl_priv *priv)
+ 
+ static void sprdwl_init_mac_addr(struct device *dev, struct sprdwl_priv *priv)
+ {
+-	int ret;
+-	const struct firmware *fw;
++	const struct firmware *fw = NULL;
++	char mac_text[18];
+ 	u8 *mac_addr = priv->mac_addr;
+ 	const char *fw_path = "unisoc_wifi_mac.txt";
++	int ret;
+ 
+-	memset(mac_addr, 0x0, sizeof(priv->mac_addr));
++	eth_zero_addr(mac_addr);
+ 	ret = request_firmware(&fw, fw_path, dev);
+ 	if (ret) {
+-		mac_addr[0] = 0xFF;
+ 		pr_err("sprdwl:Failed to load mac address file: %s\n", fw_path);
+-	} else if (fw->size < 17) {
+-		mac_addr[0] = 0xFF;
++		goto random_mac;
++	}
++
++	if (fw->size < 17) {
+ 		pr_err("sprdwl:MAC address string too short or missing !!!\n");
+-	} else {
+-		/* Parse the MAC address string from firmware */
+-		ret = sscanf(fw->data, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+-			 &mac_addr[0], &mac_addr[1], &mac_addr[2],
+-			 &mac_addr[3], &mac_addr[4], &mac_addr[5]);
+-		if (ret != 6) {
+-			pr_err("sprdwl:Failed to parse MAC address from string !!!\n");
+-			mac_addr[0] = 0xFF;
+-		} else {
+-			pr_info("sprdwl:FW-set MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+-				mac_addr[0], mac_addr[1], mac_addr[2],
+-				mac_addr[3], mac_addr[4], mac_addr[5]
+-			);
+-		}
++		goto release_and_randomize;
+ 	}
+ 
+-	if (mac_addr[0] == 0xFF) {
+-		pr_err("sprdwl:Generating ramdom MAC address !!!\n");
+-		/* Generate a random MAC address in case of load & parse failure */
+-		eth_random_addr(mac_addr);
+-		mac_addr[0] = 0x40;
+-		mac_addr[1] = 0x45;
+-		mac_addr[2] = 0xda;
++	memcpy(mac_text, fw->data, 17);
++	mac_text[17] = '\0';
++	if (!mac_pton(mac_text, mac_addr) ||
++	    !is_valid_ether_addr(mac_addr)) {
++		pr_err("sprdwl:Failed to parse a valid MAC address !!!\n");
++		goto release_and_randomize;
+ 	}
+ 
++	pr_info("sprdwl:FW-set MAC address: %pM\n", mac_addr);
++	release_firmware(fw);
++	return;
++
++release_and_randomize:
+ 	release_firmware(fw);
++random_mac:
++	pr_err("sprdwl:Generating random MAC address !!!\n");
++	eth_random_addr(mac_addr);
++	mac_addr[0] = 0x40;
++	mac_addr[1] = 0x45;
++	mac_addr[2] = 0xda;
+ }
+ 
+ int sprdwl_core_init(struct device *dev, struct sprdwl_priv *priv)

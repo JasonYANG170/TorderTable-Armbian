@@ -5,6 +5,10 @@ env:
   # extracted image whose UWE5621DS WiFi scan and hotspot are known to work.
   ARMBIAN_BUILD_COMMIT: 676832645ddde2e463b689e55fdd7ac81590f1ff
   ROCKCHIP_KERNEL_COMMIT: 41da3e69e16b9de57eca897215e8b0adc6efdc8b
+  UWE5621DS_SOURCE_COMMIT: 4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3
+  UWE5621DS_SRCVERSION: 50D3A59AC5058B3C5B7E57D
+  UWE5621DS_2ANT_INI_SHA256: 7daa38ae65de45f47d21d9a381dfef295930ebd0c4a335dfed908075e03747d8
+  UWE5621DS_3ANT_INI_SHA256: 66650cf7682c767a10399020e5294b74da233cdffee20310cdb005ae43b79b9f
 
 on:
   workflow_dispatch:
@@ -13,7 +17,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -24,12 +28,28 @@ jobs:
         run: |
           bash -n scripts/post-build.sh
           bash -n assets/uwe5621ds/torder-wifi-mac
-          grep -F 'request_firmware(&fw, fw_path, dev)' \
-            userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
-          grep -F '#include <linux/firmware.h>' \
-            userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
+          DRIVER_PATCH=userpatches/kernel/rk35xx-vendor-6.1/0001-uwe5621ds-rockchip-driver.patch
+          MAC_PATCH=userpatches/kernel/rk35xx-vendor-6.1/0002-uwe5621ds-load-device-mac.patch
+          test -f "$DRIVER_PATCH"
+          test -f "$MAC_PATCH"
+          grep -F "$UWE5621DS_SOURCE_COMMIT" "$DRIVER_PATCH"
+          grep -F "UWE5621DS_SRCVERSION=\"$UWE5621DS_SRCVERSION\"" scripts/post-build.sh
+          grep -F ' ccflags-y += -DUWE5621_FTR' "$DRIVER_PATCH"
+          grep -F '+#ccflags-y += -DIBSS_SUPPORT -DIBSS_RSN_SUPPORT' "$DRIVER_PATCH"
+          grep -F '+#ccflags-y += -DNAN_SUPPORT' "$DRIVER_PATCH"
+          grep -F '+#ccflags-y += -DRTT_SUPPORT' "$DRIVER_PATCH"
+          grep -F '+#ccflags-y += -DRND_MAC_SUPPORT' "$DRIVER_PATCH"
+          grep -F '+#ccflags-y += -DOTT_UWE' "$DRIVER_PATCH"
+          grep -F 'request_firmware(&fw, fw_path, dev)' "$MAC_PATCH"
+          grep -F 'const struct firmware *fw = NULL' "$MAC_PATCH"
+          grep -F 'is_valid_ether_addr(mac_addr)' "$MAC_PATCH"
           grep -F 'sprdwl_init_mac_addr(dev, priv)' \
-            userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
+            "$DRIVER_PATCH"
+          grep -Fx 'assets/uwe5621ds/*.ini -text -diff' .gitattributes
+          printf '%s  %s\n' "$UWE5621DS_2ANT_INI_SHA256" \
+            assets/uwe5621ds/wifi_56630001_2ant.ini | sha256sum --check -
+          printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" \
+            assets/uwe5621ds/wifi_56630001_3ant.ini | sha256sum --check -
           echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
@@ -54,6 +74,21 @@ jobs:
           large-packages: true
           swap-storage: true
 
+      - name: Pin GCC 11 toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
+            binutils-aarch64-linux-gnu
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
+          sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-11 \
+            /usr/local/bin/aarch64-linux-gnu-gcc
+          test "$(gcc -dumpversion | cut -d. -f1)" = 11
+          test "$(aarch64-linux-gnu-gcc -dumpversion | cut -d. -f1)" = 11
+          echo "CC=gcc-11" >> "$GITHUB_ENV"
+          echo "CXX=g++-11" >> "$GITHUB_ENV"
+
       - name: Clone Armbian build system
         run: |
           git init armbian-build
@@ -76,8 +111,12 @@ jobs:
           install -m 644 config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
           cmp config-6.1.115-vendor-rk35xx armbian-build/config/kernel/linux-rk35xx-vendor.config
           cp userpatches/kernel/rk35xx-vendor-6.1/*.patch armbian-build/userpatches/kernel/rk35xx-vendor-6.1/
-          cmp userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch \
-            armbian-build/userpatches/kernel/rk35xx-vendor-6.1/uwe5621ds-load-device-mac.patch
+          for patch in \
+            0001-uwe5621ds-rockchip-driver.patch \
+            0002-uwe5621ds-load-device-mac.patch; do
+            cmp "userpatches/kernel/rk35xx-vendor-6.1/$patch" \
+              "armbian-build/userpatches/kernel/rk35xx-vendor-6.1/$patch"
+          done
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
@@ -119,7 +158,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Armbian-TorderTablet
-          path: armbian-build/output/images/*.img.xz
+          path: |
+            armbian-build/output/images/*.img.xz
+            armbian-build/output/images/uwe5621ds-diagnostics.txt
+          retention-days: 14
+
+      - name: Upload WiFi diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: UWE5621DS-diagnostics
+          path: armbian-build/output/images/uwe5621ds-diagnostics.txt
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Get build info
@@ -151,7 +201,9 @@ jobs:
             ```bash
             sudo dd if=Armbian-*.img of=/dev/sdX bs=1M status=progress
             ```
-          files: armbian-build/output/images/*.img.xz
+          files: |
+            armbian-build/output/images/*.img.xz
+            armbian-build/output/images/uwe5621ds-diagnostics.txt
           draft: false
           prerelease: false
         env:

@@ -34,6 +34,11 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 ### Local Build
 
 ```bash
+# The reference module is built on Ubuntu 22.04 with GCC 11.
+sudo apt-get update
+sudo apt-get install -y gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
+  binutils-aarch64-linux-gnu
+
 # Check out the same Armbian revision as the working reference image
 git init build
 cd build
@@ -61,10 +66,12 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 - **Fix**: Writes the root filesystem UUID to both `armbianEnv.txt` and DTB bootargs
 
 ### 2. UWE5621DS WiFi and Bluetooth
-- **Problem**: A newer build changed the WCN BSP from built-in to a module; `sprdwl_ng` then initialized the shared bus twice, failed probing, and left WiFi unable to scan or create a hotspot
-- **Fix**: Pins the known-working Armbian/kernel revisions, applies the full extracted kernel configuration, generates a stable per-device MAC before probing, and disables PMF for WPA2 hotspots
-- **CI check**: Rejects an image unless the WCN BSP is built in, `sprdwl_ng` has no modular BSP dependency, and the driver contains per-device MAC provisioning support
-- **Files**: `torder-wifi-mac.service`, `90-torder-wifi.conf`, UWE5621DS firmware assets
+- **Problem**: Armbian's generated generic UWE5622 branch enabled `OTT_UWE` and scan random-MAC support. NetworkManager then sent `WIFI_CMD_RND_MAC`; `wlan0` existed, but scans returned no APs and hotspot creation failed.
+- **Fix**: Replaces `unisocwifi` with the Rockchip Linux 6.1 UWE5621DS implementation from source commit `4c63dfb`. It enables `UWE5621_FTR`, uses device-tree platform registration, and disables `OTT_UWE`, random scan MAC, IBSS, NAN, and RTT. The working built-in WCN BSP and Bluetooth paths are left intact.
+- **MAC**: Generates a stable address from each device before module probing. The driver reads it with bounded parsing and falls back safely without shipping a captured factory MAC.
+- **Calibration**: Stores the known-good 2-antenna and 3-antenna INI files byte-for-byte with CRLF endings protected by `.gitattributes`.
+- **CI check**: Builds on Ubuntu 22.04/GCC 11 and rejects a module with `unisoc_wlan_init`, `random_mac_set`, a modular WCN BSP dependency, wrong symbols, firmware hashes, calibration hashes, vermagic, or DTB properties. `uwe5621ds-diagnostics.txt` is included with every successful image.
+- **Files**: `0001-uwe5621ds-rockchip-driver.patch`, `0002-uwe5621ds-load-device-mac.patch`, `torder-wifi-mac.service`, `90-torder-wifi.conf`, and UWE5621DS firmware assets
 
 ### 3. GPU Panfrost Fix
 - **Problem**: Panfrost GPU page fault causing software rendering fallback
@@ -115,7 +122,8 @@ userpatches/
 |-- customize/images/
 |   `-- torder-tablet-gpu-perf-fix.sh
 |-- kernel/rk35xx-vendor-6.1/
-|   `-- uwe5621ds-load-device-mac.patch # Load the per-device WiFi MAC
+|   |-- 0001-uwe5621ds-rockchip-driver.patch # Rockchip 6.1 driver branch
+|   `-- 0002-uwe5621ds-load-device-mac.patch  # Safe per-device WiFi MAC load
 `-- patch/kernel/rk35xx-vendor-6.1/dt/
     `-- rk3566-torder-tablet.dts        # Generic device tree
 ```
