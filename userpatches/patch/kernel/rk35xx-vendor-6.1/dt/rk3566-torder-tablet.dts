@@ -1745,7 +1745,8 @@
 		power-domains = <0x26 0x06>;
 		operating-points-v2 = <0x67>;
 		iommus = <0x68>;
-		status = "disabled";
+		rknpu-supply = <0x6d>;
+		status = "okay";
 		phandle = <0x15f>;
 	};
 
@@ -1836,7 +1837,9 @@
 		clocks = <0x02 0x02>;
 		clock-names = "bus";
 		operating-points-v2 = <0x6b>;
-		status = "disabled";
+		bus-supply = <0x77>;
+		pvtm-supply = <0x05>;
+		status = "okay";
 		phandle = <0x160>;
 	};
 
@@ -1880,7 +1883,7 @@
 		clock-names = "aclk\0iface";
 		power-domains = <0x26 0x06>;
 		#iommu-cells = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x68>;
 	};
 

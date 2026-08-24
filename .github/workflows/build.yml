@@ -7,6 +7,10 @@ env:
   ROCKCHIP_KERNEL_COMMIT: 41da3e69e16b9de57eca897215e8b0adc6efdc8b
   UWE5621DS_SOURCE_COMMIT: 4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3
   ROCKCHIP_MPP_COMMIT: c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+  RKNN_TOOLKIT_COMMIT: 59a913d172e7f5ff03c9076e2ec7b1b1288ffd08
+  RKNN_RUNTIME_SHA256: d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8
+  RKNN_HEADER_SHA256: c48e11a6f41b451a5fd1e4ad774ea60252d3d94f78bee9b21ea3d21b21deba9a
+  RKNN_MODEL_SHA256: 92b36515616fc568ddc573f07a345cf28441efe0d24ecc9b98051fe8bcfad980
   PYLIBFDT_FIX_COMMIT: 5008d1d6a356b8d0a78060da2e1021507d529cff
   UWE5621DS_SRCVERSION: 50D3A59AC5058B3C5B7E57D
   UWE5621DS_2ANT_INI_SHA256: 7daa38ae65de45f47d21d9a381dfef295930ebd0c4a335dfed908075e03747d8
@@ -56,11 +60,13 @@ jobs:
             assets/uwe5621ds/wifi_56630001_2ant.ini | sha256sum --check -
           printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" \
             assets/uwe5621ds/wifi_56630001_3ant.ini | sha256sum --check -
-          echo '71efb98376efbba56b48b7dd7ddf242c92e3f20a39a2daa1b4ea2170765af9bd  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          echo 'd6e1ce8f8e54298680dda5bd721dbe3bed51abe1463fdfcf5dfdf4985d4e2b35  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
           grep -F 'clock-frequency = <101147760>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
+          grep -F 'RKNN_QUERY_PERF_RUN' assets/rknpu/rknn-smoke-test.c
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
+            'CONFIG_ROCKCHIP_RKNPU=y' \
             'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
             'CONFIG_RK_WIFI_DEVICE_UWE5621=y' \
             'CONFIG_RK_WIFI_DEVICE_UWE5622=y' \
@@ -122,6 +128,44 @@ jobs:
           test -x rockchip-mpp-rootfs/usr/bin/mpi_dec_test
           file rockchip-mpp-rootfs/usr/bin/mpi_enc_test | grep -F 'ARM aarch64'
           file rockchip-mpp-rootfs/usr/bin/mpi_dec_test | grep -F 'ARM aarch64'
+
+      - name: Prepare Rockchip RKNN userspace
+        run: |
+          DOWNLOAD="$GITHUB_WORKSPACE/rknpu-download"
+          ROOTFS="$GITHUB_WORKSPACE/rknpu-rootfs"
+          BASE="https://raw.githubusercontent.com/airockchip/rknn-toolkit2/$RKNN_TOOLKIT_COMMIT"
+          mkdir -p "$DOWNLOAD" \
+            "$ROOTFS/usr/bin" \
+            "$ROOTFS/usr/include" \
+            "$ROOTFS/usr/lib/aarch64-linux-gnu" \
+            "$ROOTFS/usr/share/torder-rknpu"
+          curl --fail --location --retry 3 \
+            "$BASE/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so" \
+            --output "$DOWNLOAD/librknnrt.so"
+          curl --fail --location --retry 3 \
+            "$BASE/rknpu2/runtime/Linux/librknn_api/include/rknn_api.h" \
+            --output "$DOWNLOAD/rknn_api.h"
+          curl --fail --location --retry 3 \
+            "$BASE/rknpu2/examples/rknn_mobilenet_demo/model/RK3566_RK3568/mobilenet_v1.rknn" \
+            --output "$DOWNLOAD/mobilenet_v1.rknn"
+          printf '%s  %s\n' "$RKNN_RUNTIME_SHA256" "$DOWNLOAD/librknnrt.so" | sha256sum --check -
+          printf '%s  %s\n' "$RKNN_HEADER_SHA256" "$DOWNLOAD/rknn_api.h" | sha256sum --check -
+          printf '%s  %s\n' "$RKNN_MODEL_SHA256" "$DOWNLOAD/mobilenet_v1.rknn" | sha256sum --check -
+          install -m 755 "$DOWNLOAD/librknnrt.so" \
+            "$ROOTFS/usr/lib/aarch64-linux-gnu/librknnrt.so"
+          ln -s librknnrt.so \
+            "$ROOTFS/usr/lib/aarch64-linux-gnu/librknn_api.so"
+          install -m 644 "$DOWNLOAD/rknn_api.h" "$ROOTFS/usr/include/rknn_api.h"
+          install -m 644 "$DOWNLOAD/mobilenet_v1.rknn" \
+            "$ROOTFS/usr/share/torder-rknpu/mobilenet_v1.rknn"
+          aarch64-linux-gnu-gcc -std=c11 -O2 -Wall -Wextra \
+            -I"$DOWNLOAD" assets/rknpu/rknn-smoke-test.c \
+            "$DOWNLOAD/librknnrt.so" -lstdc++ -ldl -lm -lpthread \
+            -Wl,-rpath,/usr/lib/aarch64-linux-gnu \
+            -o "$ROOTFS/usr/bin/rknn-smoke-test"
+          file "$ROOTFS/usr/bin/rknn-smoke-test" | grep -F 'ARM aarch64'
+          aarch64-linux-gnu-readelf -h "$DOWNLOAD/librknnrt.so" | \
+            grep -F 'Machine:                           AArch64'
 
       - name: Clone Armbian build system
         run: |
@@ -189,6 +233,8 @@ jobs:
           sudo env \
             ROCKCHIP_MPP_ROOTFS="$GITHUB_WORKSPACE/rockchip-mpp-rootfs" \
             ROCKCHIP_MPP_COMMIT="$ROCKCHIP_MPP_COMMIT" \
+            RKNPU_ROOTFS="$GITHUB_WORKSPACE/rknpu-rootfs" \
+            RKNN_TOOLKIT_COMMIT="$RKNN_TOOLKIT_COMMIT" \
             bash scripts/post-build.sh armbian-build/output/images
 
       - name: Compress image
