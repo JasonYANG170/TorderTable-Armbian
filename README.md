@@ -107,6 +107,13 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
   - Keeps `bl_power=0` and avoids synthetic input so the touch controller remains responsive
 - **Files**: `/usr/local/sbin/powerkey-backlight-toggle.py`, `powerkey-backlight-toggle.service`
 
+### 8. GNOME Night Light
+- **Problem**: GNOME reported Night Light as active on X11 without changing the panel color
+- **Fix**: A user service mirrors the GNOME target color temperature to the DSI output through RandR
+  - Writes the gamma LUT only when Night Light or its target temperature changes
+  - Avoids repeated LUT updates and visible display flicker
+- **Files**: `/usr/local/bin/torder-night-light`, `torder-night-light.service`
+
 ## Architecture
 
 ```
@@ -114,6 +121,9 @@ assets/uwe5621ds/
 |-- torder-wifi-mac              # Per-device MAC provisioning
 |-- torder-wifi-mac.service      # Runs before module and udev probing
 `-- 90-torder-wifi.conf          # UWE5621DS hotspot compatibility
+assets/display/
+|-- torder-night-light.py        # X11 Night Light RandR fallback
+`-- torder-night-light.service   # GNOME user-session service
 scripts/
 `-- post-build.sh                # Installs and verifies device fixes
 userpatches/
@@ -161,6 +171,7 @@ Reference files from working device:
 
 ## Known Limitations
 
-- Night Light does not work on Wayland (Mutter limitation)
+- The UWE5621DS firmware does not support WPA3-SAE. WPA3-only access points
+  must enable WPA2/WPA3 transition mode with WPA2-PSK clients permitted.
 - No camera hardware detected
 - DSI panel cannot be overclocked beyond ~120Hz (hardware limit)

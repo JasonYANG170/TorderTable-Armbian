@@ -6,6 +6,7 @@ WORK="${1:?Usage: post-build.sh IMAGE_DIRECTORY [IMAGE]}"
 IMG="${2:-}"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
+DISPLAY_ASSETS="$SCRIPT_DIR/../assets/display"
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
 UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
 UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
@@ -204,6 +205,20 @@ sudo ln -sf ../torder-wifi-mac.service "$TMPDIR/etc/systemd/system/sysinit.targe
 sudo install -m 644 "$UWE_ASSETS/90-torder-wifi.conf" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
 
 echo "UWE5621DS WiFi and Bluetooth assets installed"
+
+# GNOME reports Night Light as active on X11, but this VOP stack does not
+# reliably retain the color LUT. Keep its D-Bus state applied through RandR.
+test -f "$DISPLAY_ASSETS/torder-night-light.py"
+test -f "$DISPLAY_ASSETS/torder-night-light.service"
+sudo install -d "$TMPDIR/usr/local/bin" "$TMPDIR/usr/lib/systemd/user" \
+    "$TMPDIR/etc/systemd/user/default.target.wants"
+sudo install -m 755 "$DISPLAY_ASSETS/torder-night-light.py" \
+    "$TMPDIR/usr/local/bin/torder-night-light"
+sudo install -m 644 "$DISPLAY_ASSETS/torder-night-light.service" \
+    "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
+sudo ln -sf /usr/lib/systemd/user/torder-night-light.service \
+    "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service"
+echo "X11 Night Light fallback installed"
 
 # ============================================================
 # 5. Runtime performance policy
@@ -671,6 +686,10 @@ grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigge
 test "$(readlink "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service")" = \
     "../torder-wifi-mac.service"
 grep -Fx "wifi-sec.pmf=1" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
+python3 -m py_compile "$TMPDIR/usr/local/bin/torder-night-light"
+ls "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
+test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service")" = \
+    "/usr/lib/systemd/user/torder-night-light.service"
 test ! -e "$TMPDIR/lib/firmware/unisoc_wifi_mac.txt"
 test -x "$TMPDIR/usr/sbin/dnsmasq"
 
