@@ -55,7 +55,9 @@ jobs:
             assets/uwe5621ds/wifi_56630001_2ant.ini | sha256sum --check -
           printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" \
             assets/uwe5621ds/wifi_56630001_3ant.ini | sha256sum --check -
-          echo '479cdec08ba12ed0cc7492ba3b80ed3cfa41cb405c0fce6c62913d779d9c654a  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          echo '1c319e85fdca4befc5d9828cbfe27b8544687eb0be8bfc1c5570fdcaa7439fab  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          grep -F 'clock-frequency = <101147760>;' \
+            userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
             'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
