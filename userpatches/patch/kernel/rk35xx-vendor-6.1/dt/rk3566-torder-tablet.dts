@@ -2665,7 +2665,7 @@
 				phandle = <0x17a>;
 
 				timing0 {
-					clock-frequency = <0x3938700>;
+					clock-frequency = <101147760>;
 					hactive = <0x320>;
 					vactive = <0x500>;
 					hsync-len = <0x12>;

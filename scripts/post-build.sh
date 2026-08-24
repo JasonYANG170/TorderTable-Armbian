@@ -123,8 +123,11 @@ for DTB_DST in \
     fi
     sudo fdtput -t s "$DTB_DST" /chosen bootargs "$PATCHED_BOOTARGS"
     sudo fdtget -t s "$DTB_DST" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
+    test "$(sudo fdtget -t u "$DTB_DST" \
+        /dsi@fe060000/panel@0/display-timings/timing0 clock-frequency)" = \
+        "101147760"
 done
-echo "DTB installed with filesystem UUID root"
+echo "DTB installed with filesystem UUID root and 90Hz panel timing"
 
 # Panthor overlay
 sudo mkdir -p "$TMPDIR/boot/dtb/rockchip/overlay"
@@ -278,6 +281,9 @@ enable-animations=false
 
 [org/gnome/software]
 download-updates=false
+
+[org/gnome/settings-daemon/plugins/color]
+night-light-temperature=uint32 4000
 DCONFEOF
 sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
 
