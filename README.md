@@ -17,6 +17,7 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 - **Desktop**: GNOME on Wayland (full desktop)
 - **GPU**: Panfrost open-source driver with hardware acceleration
 - **Video codec**: Rockchip MPP H.264/H.265 hardware encode and decode
+- **NPU**: RK3566 RKNPU with RKNN Runtime 2.3.2 and model smoke test
 - **Performance**: CPU/GPU locked at max frequency
 - **Display**: 90Hz refresh rate (overclocked from 53.39Hz)
 - **Optimized**: Disabled Tracker, animations, heavy services
@@ -84,17 +85,22 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 - **Fix**: Enables RKVENC, RKVDEC, VDPU, VEPU, JPEG, IEP, and their IOMMUs. CI builds pinned Rockchip MPP userspace libraries and test tools, while udev grants the desktop `render` group access to MPP, RGA, and DMA heaps.
 - **Validation**: H.264 and H.265 hardware encode/decode round trips pass as the unprivileged desktop user.
 
-### 5. Performance Optimization
+### 5. RKNPU Acceleration
+- **Problem**: The RKNPU driver was built into the kernel, but the NPU, NPU bus, and IOMMU were disabled in the board DTB and the RKNN userspace runtime was absent.
+- **Fix**: Enables the RK3566 RKNPU at its fuse-qualified 900MHz maximum, supplies the NPU and bus from the board's shared regulators, and installs pinned RKNN Runtime 2.3.2 assets from the official `airockchip/rknn-toolkit2` repository.
+- **Validation**: The included `rknn-smoke-test` runs a real RK3566 MobileNet model as the unprivileged desktop user.
+
+### 6. Performance Optimization
 - **Problem**: System laggy with default ondemand governor
 - **Fix**: CPU locked at1800MHz, GPU at800MHz (performance mode)
 - **Files**: `max-performance.service`
 
-### 6. Display Refresh Rate
+### 7. Display Refresh Rate
 - **Problem**: Factory timing runs at only 53.39Hz
 - **Fix**: Pixel clock set from 60MHz to 101.14776MHz (90Hz)
 - **Files**: Device tree `rk3566-torder-tablet.dts`
 
-### 7. GNOME Optimization
+### 8. GNOME Optimization
 - **Problem**: GNOME too heavy for RK3566
 - **Fix**: 
   - Disabled Tracker file indexing
@@ -103,7 +109,7 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
   - ZRAM swap (1GB LZ4)
 - **Files**: `99-torder-optimize.sh`, `zram-swap.service`
 
-### 8. Power Key Lock + Backlight
+### 9. Power Key Lock + Backlight
 - **Problem**: Power key did not reliably lock/wake the tablet desktop
 - **Fix**: Installs `powerkey-backlight-toggle.service`
   - Service reads the RK805 power-key input device without taking exclusive control

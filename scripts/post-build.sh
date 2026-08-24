@@ -9,6 +9,8 @@ UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
 DISPLAY_ASSETS="$SCRIPT_DIR/../assets/display"
 MPP_ROOTFS="${ROCKCHIP_MPP_ROOTFS:-}"
 MPP_COMMIT="${ROCKCHIP_MPP_COMMIT:-unknown}"
+RKNPU_ROOTFS="${RKNPU_ROOTFS:-}"
+RKNN_COMMIT="${RKNN_TOOLKIT_COMMIT:-unknown}"
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
 UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
 UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
@@ -83,6 +85,10 @@ test -n "$MPP_ROOTFS"
 test -x "$MPP_ROOTFS/usr/bin/mpi_enc_test"
 test -x "$MPP_ROOTFS/usr/bin/mpi_dec_test"
 sudo cp -a "$MPP_ROOTFS/usr/." "$TMPDIR/usr/"
+test -n "$RKNPU_ROOTFS"
+test -x "$RKNPU_ROOTFS/usr/bin/rknn-smoke-test"
+test -f "$RKNPU_ROOTFS/usr/lib/aarch64-linux-gnu/librknnrt.so"
+sudo cp -a "$RKNPU_ROOTFS/usr/." "$TMPDIR/usr/"
 sudo ldconfig -r "$TMPDIR"
 
 ROOT_UUID=$(sudo blkid -s UUID -o value "${LOOP}p1")
@@ -670,6 +676,12 @@ for node in \
     /rkvdec@fdf80200 /iommu@fdf80800; do
     test "$(fdtget -t s "$FINAL_DTB" "$node" status)" = "okay"
 done
+for node in /npu@fde40000 /bus-npu /iommu@fde4b000; do
+    test "$(fdtget -t s "$FINAL_DTB" "$node" status)" = "okay"
+done
+test "$(fdtget -t x "$FINAL_DTB" /npu@fde40000 rknpu-supply)" = "6d"
+test "$(fdtget -t x "$FINAL_DTB" /bus-npu bus-supply)" = "77"
+test "$(fdtget -t x "$FINAL_DTB" /bus-npu pvtm-supply)" = "5"
 fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
 
 {
@@ -695,6 +707,11 @@ fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     printf 'dtb_mpp_service=%s\n' "$(fdtget -t s "$FINAL_DTB" /mpp-srv status)"
     printf 'dtb_rkvenc=%s\n' "$(fdtget -t s "$FINAL_DTB" /rkvenc@fdf40000 status)"
     printf 'dtb_rkvdec=%s\n' "$(fdtget -t s "$FINAL_DTB" /rkvdec@fdf80200 status)"
+    printf 'rknn_toolkit_commit=%s\n' "$RKNN_COMMIT"
+    printf 'rknn_runtime=%s\n' '/usr/lib/aarch64-linux-gnu/librknnrt.so'
+    printf 'rknn_smoke_model=%s\n' '/usr/share/torder-rknpu/mobilenet_v1.rknn'
+    printf 'dtb_rknpu=%s\n' "$(fdtget -t s "$FINAL_DTB" /npu@fde40000 status)"
+    printf 'dtb_rknpu_mmu=%s\n' "$(fdtget -t s "$FINAL_DTB" /iommu@fde4b000 status)"
     if command -v aarch64-linux-gnu-gcc > /dev/null; then
         printf 'cross_compiler=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
     fi
@@ -721,6 +738,12 @@ ls "$TMPDIR/usr/bin/mpi_enc_test"
 ls "$TMPDIR/usr/bin/mpi_dec_test"
 ls "$TMPDIR/usr/bin/mpp_info_test"
 ls "$TMPDIR/usr/lib/aarch64-linux-gnu/librockchip_mpp.so"
+ls "$TMPDIR/usr/bin/rknn-smoke-test"
+ls "$TMPDIR/usr/lib/aarch64-linux-gnu/librknnrt.so"
+ls "$TMPDIR/usr/include/rknn_api.h"
+ls "$TMPDIR/usr/share/torder-rknpu/mobilenet_v1.rknn"
+test "$(readlink "$TMPDIR/usr/lib/aarch64-linux-gnu/librknn_api.so")" = \
+    "librknnrt.so"
 grep -Fx 'DefaultDependencies=no' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'After=local-fs.target' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service' \
