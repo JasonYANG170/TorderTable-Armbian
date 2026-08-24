@@ -233,7 +233,7 @@ set -eu
 
 set_governor() {
     governor_file="$1"
-    available_file="${governor_file%/governor}/available_governors"
+    available_file="$2"
     [ -w "$governor_file" ] || return 0
     if [ -r "$available_file" ] && grep -qw performance "$available_file"; then
         echo performance > "$governor_file"
@@ -242,12 +242,12 @@ set_governor() {
 
 for policy in /sys/devices/system/cpu/cpufreq/policy*; do
     [ -d "$policy" ] || continue
-    set_governor "$policy/scaling_governor"
+    set_governor "$policy/scaling_governor" "$policy/scaling_available_governors"
 done
 
 for governor in /sys/class/devfreq/*/governor; do
     [ -e "$governor" ] || continue
-    set_governor "$governor"
+    set_governor "$governor" "${governor%/governor}/available_governors"
 done
 PERFSCRIPTEOF
 sudo chmod 755 "$TMPDIR/usr/local/sbin/torder-performance"
