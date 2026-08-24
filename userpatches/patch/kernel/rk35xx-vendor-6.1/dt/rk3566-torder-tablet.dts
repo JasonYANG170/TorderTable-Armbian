@@ -696,7 +696,7 @@
 		compatible = "rockchip,mpp-service";
 		rockchip,taskqueue-count = <0x06>;
 		rockchip,resetgroup-count = <0x06>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x6f>;
 	};
 
@@ -1970,7 +1970,7 @@
 		rockchip,srv = <0x6f>;
 		rockchip,taskqueue-node = <0x00>;
 		rockchip,resetgroup-node = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x163>;
 	};
 
@@ -1983,7 +1983,7 @@
 		clocks = <0x24 0xee 0x24 0xef>;
 		power-domains = <0x26 0x0b>;
 		#iommu-cells = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x6e>;
 	};
 
@@ -2026,7 +2026,7 @@
 		rockchip,taskqueue-node = <0x01>;
 		rockchip,resetgroup-node = <0x01>;
 		power-domains = <0x26 0x0a>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x166>;
 	};
 
@@ -2039,7 +2039,7 @@
 		clocks = <0x24 0xfb 0x24 0xfc>;
 		power-domains = <0x26 0x0a>;
 		#iommu-cells = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x71>;
 	};
 
@@ -2057,7 +2057,7 @@
 		rockchip,taskqueue-node = <0x02>;
 		rockchip,resetgroup-node = <0x02>;
 		power-domains = <0x26 0x0a>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x167>;
 	};
 
@@ -2070,7 +2070,7 @@
 		clock-names = "aclk\0iface";
 		power-domains = <0x26 0x0a>;
 		#iommu-cells = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x72>;
 	};
 
@@ -2087,7 +2087,7 @@
 		rockchip,taskqueue-node = <0x05>;
 		rockchip,resetgroup-node = <0x05>;
 		iommus = <0x73>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x168>;
 	};
 
@@ -2100,7 +2100,7 @@
 		clock-names = "aclk\0iface";
 		#iommu-cells = <0x00>;
 		power-domains = <0x26 0x0a>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x73>;
 	};
 
@@ -2133,7 +2133,7 @@
 		rockchip,resetgroup-node = <0x03>;
 		power-domains = <0x26 0x0e>;
 		operating-points-v2 = <0x75>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x16a>;
 	};
 
@@ -2173,7 +2173,7 @@
 		rockchip,enable-cmd-retry;
 		#iommu-cells = <0x00>;
 		power-domains = <0x26 0x0e>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x74>;
 	};
 
@@ -2203,7 +2203,7 @@
 		rockchip,rcb-iova = <0x10000000 0x10000>;
 		rockchip,rcb-min-width = <0x200>;
 		rockchip,task-capacity = <0x10>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x16b>;
 	};
 
@@ -2238,7 +2238,7 @@
 		clock-names = "aclk\0iface";
 		power-domains = <0x26 0x0d>;
 		#iommu-cells = <0x00>;
-		status = "disabled";
+		status = "okay";
 		phandle = <0x78>;
 	};
 

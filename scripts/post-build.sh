@@ -7,6 +7,8 @@ IMG="${2:-}"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 UWE_ASSETS="$SCRIPT_DIR/../assets/uwe5621ds"
 DISPLAY_ASSETS="$SCRIPT_DIR/../assets/display"
+MPP_ROOTFS="${ROCKCHIP_MPP_ROOTFS:-}"
+MPP_COMMIT="${ROCKCHIP_MPP_COMMIT:-unknown}"
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
 UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
 UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
@@ -76,6 +78,12 @@ sleep 1
 TMPDIR=$(mktemp -d)
 sudo mount "${LOOP}p1" "$TMPDIR"
 echo "Mounted at $TMPDIR"
+
+test -n "$MPP_ROOTFS"
+test -x "$MPP_ROOTFS/usr/bin/mpi_enc_test"
+test -x "$MPP_ROOTFS/usr/bin/mpi_dec_test"
+sudo cp -a "$MPP_ROOTFS/usr/." "$TMPDIR/usr/"
+sudo ldconfig -r "$TMPDIR"
 
 ROOT_UUID=$(sudo blkid -s UUID -o value "${LOOP}p1")
 if ! [[ "$ROOT_UUID" =~ ^[0-9A-Fa-f-]+$ ]]; then
@@ -480,6 +488,11 @@ sudo tee "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules" > /dev/null << 
 ACTION=="add|change", SUBSYSTEM=="i2c", KERNEL=="1-0040", TEST=="power/control", ATTR{power/control}="on"
 ACTION=="add|change", SUBSYSTEM=="input", ATTR{name}=="gsl3673_800x1280", TEST=="power/control", ATTR{power/control}="on"
 UDEV
+sudo tee "$TMPDIR/etc/udev/rules.d/99-rockchip-media.rules" > /dev/null << 'UDEV'
+KERNEL=="mpp_service", GROUP="render", MODE="0660", TAG+="uaccess"
+KERNEL=="rga", GROUP="render", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="dma_heap", GROUP="render", MODE="0660", TAG+="uaccess"
+UDEV
 
 echo "powerkey-backlight-toggle installed"
 
@@ -647,6 +660,16 @@ test "$(fdtget -t s "$FINAL_DTB" /uwe-bsp unisoc,btwf-file-name)" = \
     "/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 test "$(fdtget -t s "$FINAL_DTB" /sprd-mtty compatible)" = "sprd,mtty"
 test "$(fdtget -t s "$FINAL_DTB" /sprd-mtty status)" = "okay"
+for node in \
+    /mpp-srv \
+    /vdpu@fdea0400 /iommu@fdea0800 \
+    /jpegd@fded0000 /iommu@fded0480 \
+    /vepu@fdee0000 /iommu@fdee0800 \
+    /iep@fdef0000 /iommu@fdef0800 \
+    /rkvenc@fdf40000 /iommu@fdf40f00 \
+    /rkvdec@fdf80200 /iommu@fdf80800; do
+    test "$(fdtget -t s "$FINAL_DTB" "$node" status)" = "okay"
+done
 fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
 
 {
@@ -667,6 +690,11 @@ fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     printf 'wcn_project_version=%s\n' 'uwe5623_marlin3E_ott'
     printf 'dtb_sprd_wlan=%s\n' "$(fdtget -t s "$FINAL_DTB" /sprd-wlan compatible)"
     printf 'dtb_uwe_bsp=%s\n' "$(fdtget -t s "$FINAL_DTB" /uwe-bsp compatible)"
+    printf 'rockchip_mpp_commit=%s\n' "$MPP_COMMIT"
+    printf 'rockchip_mpp_tools=%s\n' 'mpi_enc_test mpi_dec_test mpp_info_test'
+    printf 'dtb_mpp_service=%s\n' "$(fdtget -t s "$FINAL_DTB" /mpp-srv status)"
+    printf 'dtb_rkvenc=%s\n' "$(fdtget -t s "$FINAL_DTB" /rkvenc@fdf40000 status)"
+    printf 'dtb_rkvdec=%s\n' "$(fdtget -t s "$FINAL_DTB" /rkvdec@fdf80200 status)"
     if command -v aarch64-linux-gnu-gcc > /dev/null; then
         printf 'cross_compiler=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
     fi
@@ -677,6 +705,10 @@ ls "$TMPDIR/usr/local/sbin/powerkey-backlight-toggle.py"
 ls "$TMPDIR/etc/systemd/system/powerkey-backlight-toggle.service"
 ls "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf"
 ls "$TMPDIR/etc/udev/rules.d/99-touch-no-runtime-pm.rules"
+grep -F 'KERNEL=="mpp_service", GROUP="render", MODE="0660", TAG+="uaccess"' \
+    "$TMPDIR/etc/udev/rules.d/99-rockchip-media.rules"
+grep -F 'SUBSYSTEM=="dma_heap", GROUP="render", MODE="0660", TAG+="uaccess"' \
+    "$TMPDIR/etc/udev/rules.d/99-rockchip-media.rules"
 ls "$TMPDIR/lib/firmware/uwe5621ds/wcnmodem_2ant.bin"
 ls "$TMPDIR/lib/firmware/wifi_56630001_3ant.ini"
 ls "$TMPDIR/usr/bin/hciattach_opi"
@@ -685,6 +717,10 @@ ls "$TMPDIR/usr/lib/systemd/system/torder-tablet-bluetooth.service"
 ls "$TMPDIR/usr/local/sbin/torder-wifi-mac"
 ls "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 ls "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service"
+ls "$TMPDIR/usr/bin/mpi_enc_test"
+ls "$TMPDIR/usr/bin/mpi_dec_test"
+ls "$TMPDIR/usr/bin/mpp_info_test"
+ls "$TMPDIR/usr/lib/aarch64-linux-gnu/librockchip_mpp.so"
 grep -Fx 'DefaultDependencies=no' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'After=local-fs.target' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service' \
