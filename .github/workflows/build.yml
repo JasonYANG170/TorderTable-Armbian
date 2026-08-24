@@ -6,6 +6,7 @@ env:
   ARMBIAN_BUILD_COMMIT: 676832645ddde2e463b689e55fdd7ac81590f1ff
   ROCKCHIP_KERNEL_COMMIT: 41da3e69e16b9de57eca897215e8b0adc6efdc8b
   UWE5621DS_SOURCE_COMMIT: 4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3
+  ROCKCHIP_MPP_COMMIT: c08762ebfadeb4e986d2fed993bc7a54862d3ebe
   PYLIBFDT_FIX_COMMIT: 5008d1d6a356b8d0a78060da2e1021507d529cff
   UWE5621DS_SRCVERSION: 50D3A59AC5058B3C5B7E57D
   UWE5621DS_2ANT_INI_SHA256: 7daa38ae65de45f47d21d9a381dfef295930ebd0c4a335dfed908075e03747d8
@@ -55,7 +56,7 @@ jobs:
             assets/uwe5621ds/wifi_56630001_2ant.ini | sha256sum --check -
           printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" \
             assets/uwe5621ds/wifi_56630001_3ant.ini | sha256sum --check -
-          echo '1c319e85fdca4befc5d9828cbfe27b8544687eb0be8bfc1c5570fdcaa7439fab  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          echo '71efb98376efbba56b48b7dd7ddf242c92e3f20a39a2daa1b4ea2170765af9bd  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
           grep -F 'clock-frequency = <101147760>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
@@ -86,7 +87,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
-            binutils-aarch64-linux-gnu bc python3-dev python3-venv swig
+            g++-11-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            bc cmake ninja-build python3-dev python3-venv swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
           sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-11 \
@@ -96,6 +98,30 @@ jobs:
           test "$(printf '6 * 7\n' | bc)" = "42"
           echo "CC=gcc-11" >> "$GITHUB_ENV"
           echo "CXX=g++-11" >> "$GITHUB_ENV"
+
+      - name: Build Rockchip MPP userspace
+        run: |
+          git init rockchip-mpp
+          git -C rockchip-mpp remote add origin https://github.com/rockchip-linux/mpp.git
+          git -C rockchip-mpp fetch --depth=1 origin "$ROCKCHIP_MPP_COMMIT"
+          git -C rockchip-mpp checkout --detach FETCH_HEAD
+          test "$(git -C rockchip-mpp rev-parse HEAD)" = "$ROCKCHIP_MPP_COMMIT"
+          cmake -S rockchip-mpp -B rockchip-mpp-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++-11 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu \
+            -DBUILD_TEST=ON
+          cmake --build rockchip-mpp-build --parallel
+          DESTDIR="$GITHUB_WORKSPACE/rockchip-mpp-rootfs" \
+            cmake --install rockchip-mpp-build
+          test -x rockchip-mpp-rootfs/usr/bin/mpi_enc_test
+          test -x rockchip-mpp-rootfs/usr/bin/mpi_dec_test
+          file rockchip-mpp-rootfs/usr/bin/mpi_enc_test | grep -F 'ARM aarch64'
+          file rockchip-mpp-rootfs/usr/bin/mpi_dec_test | grep -F 'ARM aarch64'
 
       - name: Clone Armbian build system
         run: |
@@ -160,7 +186,10 @@ jobs:
       - name: Post-build - install device fixes
         run: |
           chmod +x scripts/post-build.sh
-          sudo bash scripts/post-build.sh armbian-build/output/images
+          sudo env \
+            ROCKCHIP_MPP_ROOTFS="$GITHUB_WORKSPACE/rockchip-mpp-rootfs" \
+            ROCKCHIP_MPP_COMMIT="$ROCKCHIP_MPP_COMMIT" \
+            bash scripts/post-build.sh armbian-build/output/images
 
       - name: Compress image
         run: |
