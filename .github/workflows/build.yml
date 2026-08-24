@@ -29,6 +29,7 @@ jobs:
         run: |
           bash -n scripts/post-build.sh
           bash -n assets/uwe5621ds/torder-wifi-mac
+          python3 -m py_compile assets/display/torder-night-light.py
           bash -n scripts/prepare-pylibfdt.sh
           grep -F "PYLIBFDT_FIX_COMMIT=\"$PYLIBFDT_FIX_COMMIT\"" \
             scripts/prepare-pylibfdt.sh

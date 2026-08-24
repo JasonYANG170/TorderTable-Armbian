@@ -1,0 +1,13 @@
+[Unit]
+Description=Torder Tablet X11 Night Light fallback
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/torder-night-light
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
