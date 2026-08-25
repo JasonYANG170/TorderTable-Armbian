@@ -64,6 +64,13 @@ jobs:
           grep -F 'clock-frequency = <101147760>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           grep -F 'RKNN_QUERY_PERF_RUN' assets/rknpu/rknn-smoke-test.c
+          grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base snapd chromium-browser xdg-utils libcap2-bin gnome-software gnome-software-plugin-snap alsa-utils"' \
+            userpatches/config/boards/torder-tablet.csc
+          grep -F "setcap \"\$SNAP_CONFINE_CAPS\"" scripts/post-build.sh
+          grep -F 'chromium_3506.snap' scripts/post-build.sh
+          grep -F 'core22_2438.snap' scripts/post-build.sh
+          grep -F 'snap-store_1391.snap' scripts/post-build.sh
+          grep -F "sset 'Playback Path' SPK" scripts/post-build.sh
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
             'CONFIG_ROCKCHIP_RKNPU=y' \
@@ -94,6 +101,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
             g++-11-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            libcap2-bin \
             bc cmake ninja-build python3-dev python3-venv swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
