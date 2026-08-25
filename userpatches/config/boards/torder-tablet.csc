@@ -11,7 +11,7 @@ BOOT_FDT_FILE="rockchip/rk3566-torder-tablet.dtb"
 BOOT_SCENARIO="spl-blobs"
 IMAGE_PARTITION_TABLE="gpt"
 GOVERNOR="performance"
-PACKAGE_LIST_BOARD="dnsmasq-base"
+PACKAGE_LIST_BOARD="dnsmasq-base snapd chromium-browser xdg-utils libcap2-bin gnome-software gnome-software-plugin-snap alsa-utils"
 
 # Mainline U-Boot
 function post_family_config__torder_tablet_use_mainline_uboot() {
