@@ -70,6 +70,7 @@ jobs:
           grep -F 'chromium_3506.snap' scripts/post-build.sh
           grep -F 'core22_2438.snap' scripts/post-build.sh
           grep -F 'snap-store_1391.snap' scripts/post-build.sh
+          grep -F 'getent ahosts api.snapcraft.io' scripts/post-build.sh
           grep -F "sset 'Playback Path' SPK" scripts/post-build.sh
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
