@@ -96,6 +96,26 @@ sudo ldconfig -r "$TMPDIR"
 # payload in the image so Chromium is available without a first-boot download.
 BUNDLED_SNAP_CACHE="$TMPDIR/var/cache/torder-bundled-snaps"
 sudo mkdir -p "$BUNDLED_SNAP_CACHE"
+
+# The unbooted Noble rootfs points resolv.conf at systemd-resolved under /run,
+# which does not exist in a chroot. Temporarily use the runner's resolver while
+# downloading the pinned ARM64 snaps, then restore the image configuration.
+TARGET_RESOLV_CONF="$TMPDIR/etc/resolv.conf"
+TARGET_RESOLV_LINK=""
+TARGET_RESOLV_BACKUP=""
+if [ -L "$TARGET_RESOLV_CONF" ]; then
+    TARGET_RESOLV_LINK=$(readlink "$TARGET_RESOLV_CONF")
+elif [ -e "$TARGET_RESOLV_CONF" ]; then
+    TARGET_RESOLV_BACKUP=$(mktemp)
+    sudo cp -a "$TARGET_RESOLV_CONF" "$TARGET_RESOLV_BACKUP"
+else
+    echo "Target rootfs has no /etc/resolv.conf" >&2
+    exit 1
+fi
+sudo rm -f "$TARGET_RESOLV_CONF"
+sudo install -m 644 /etc/resolv.conf "$TARGET_RESOLV_CONF"
+sudo chroot "$TMPDIR" getent ahosts api.snapcraft.io > /dev/null
+
 for snap_revision in \
     bare:5 \
     core22:2438 \
@@ -108,11 +128,28 @@ for snap_revision in \
     snap-store:1391; do
     snap_name=${snap_revision%%:*}
     revision=${snap_revision##*:}
-    sudo chroot "$TMPDIR" snap download "$snap_name" \
-        --revision="$revision" \
-        --basename="${snap_name}_${revision}" \
-        --target-directory=/var/cache/torder-bundled-snaps
+    downloaded=false
+    for attempt in 1 2 3; do
+        if sudo chroot "$TMPDIR" snap download "$snap_name" \
+                --revision="$revision" \
+                --basename="${snap_name}_${revision}" \
+                --target-directory=/var/cache/torder-bundled-snaps; then
+            downloaded=true
+            break
+        fi
+        echo "Retrying $snap_name revision $revision ($attempt/3)" >&2
+        sleep 5
+    done
+    test "$downloaded" = true
 done
+
+sudo rm -f "$TARGET_RESOLV_CONF"
+if [ -n "$TARGET_RESOLV_LINK" ]; then
+    sudo ln -s "$TARGET_RESOLV_LINK" "$TARGET_RESOLV_CONF"
+elif [ -n "$TARGET_RESOLV_BACKUP" ]; then
+    sudo cp -a "$TARGET_RESOLV_BACKUP" "$TARGET_RESOLV_CONF"
+    rm -f "$TARGET_RESOLV_BACKUP"
+fi
 
 sudo install -m 755 /dev/stdin \
     "$TMPDIR/usr/local/sbin/torder-install-bundled-snaps" << 'BUNDLED_SNAPS_INSTALL'
