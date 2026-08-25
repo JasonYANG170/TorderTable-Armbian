@@ -11,6 +11,7 @@ MPP_ROOTFS="${ROCKCHIP_MPP_ROOTFS:-}"
 MPP_COMMIT="${ROCKCHIP_MPP_COMMIT:-unknown}"
 RKNPU_ROOTFS="${RKNPU_ROOTFS:-}"
 RKNN_COMMIT="${RKNN_TOOLKIT_COMMIT:-unknown}"
+SNAP_CONFINE_CAPS="cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_setgid,cap_setuid,cap_sys_chroot,cap_sys_ptrace,cap_sys_admin,cap_sys_resource=p"
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
 UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
 UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
@@ -90,6 +91,116 @@ test -x "$RKNPU_ROOTFS/usr/bin/rknn-smoke-test"
 test -f "$RKNPU_ROOTFS/usr/lib/aarch64-linux-gnu/librknnrt.so"
 sudo cp -a "$RKNPU_ROOTFS/usr/." "$TMPDIR/usr/"
 sudo ldconfig -r "$TMPDIR"
+
+# Ubuntu's Chromium package is a Snap launcher. Keep the complete ARM64 Snap
+# payload in the image so Chromium is available without a first-boot download.
+BUNDLED_SNAP_CACHE="$TMPDIR/var/cache/torder-bundled-snaps"
+sudo mkdir -p "$BUNDLED_SNAP_CACHE"
+for snap_revision in \
+    bare:5 \
+    core22:2438 \
+    core24:1644 \
+    gtk-common-themes:1535 \
+    mesa-2404:1836 \
+    gnome-46-2404:154 \
+    cups:1237 \
+    chromium:3506 \
+    snap-store:1391; do
+    snap_name=${snap_revision%%:*}
+    revision=${snap_revision##*:}
+    sudo chroot "$TMPDIR" snap download "$snap_name" \
+        --revision="$revision" \
+        --basename="${snap_name}_${revision}" \
+        --target-directory=/var/cache/torder-bundled-snaps
+done
+
+sudo install -m 755 /dev/stdin \
+    "$TMPDIR/usr/local/sbin/torder-install-bundled-snaps" << 'BUNDLED_SNAPS_INSTALL'
+#!/bin/bash
+set -euo pipefail
+
+CACHE=/var/cache/torder-bundled-snaps
+SNAPS=(
+    bare:5
+    core22:2438
+    core24:1644
+    gtk-common-themes:1535
+    mesa-2404:1836
+    gnome-46-2404:154
+    cups:1237
+    chromium:3506
+    snap-store:1391
+)
+
+if snap list chromium > /dev/null 2>&1 && \
+        snap list snap-store > /dev/null 2>&1; then
+    rm -rf -- "$CACHE"
+    exit 0
+fi
+
+for snap_revision in "${SNAPS[@]}"; do
+    snap_name=${snap_revision%%:*}
+    revision=${snap_revision##*:}
+    snap ack "$CACHE/${snap_name}_${revision}.assert" 2>/dev/null || true
+    if ! snap list "$snap_name" > /dev/null 2>&1; then
+        snap install "$CACHE/${snap_name}_${revision}.snap"
+    fi
+done
+
+snap switch chromium --channel=latest/stable
+snap switch snap-store --channel=2/stable
+snap connect chromium:password-manager-service 2>/dev/null || true
+snap list chromium
+snap list snap-store
+rm -rf -- "$CACHE"
+BUNDLED_SNAPS_INSTALL
+
+sudo install -m 644 /dev/stdin \
+    "$TMPDIR/etc/systemd/system/torder-install-bundled-snaps.service" << 'BUNDLED_SNAPS_SERVICE'
+[Unit]
+Description=Install bundled Chromium and Snap Store
+Wants=snapd.service
+After=snapd.service snapd.socket
+Before=display-manager.service
+ConditionPathExists=/var/cache/torder-bundled-snaps/chromium_3506.snap
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/torder-install-bundled-snaps
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=graphical.target
+BUNDLED_SNAPS_SERVICE
+
+sudo mkdir -p "$TMPDIR/etc/systemd/system/graphical.target.wants"
+sudo ln -sf ../torder-install-bundled-snaps.service \
+    "$TMPDIR/etc/systemd/system/graphical.target.wants/torder-install-bundled-snaps.service"
+
+# PulseAudio's generic RK817 fallback profile can restore the headphone enum
+# even when its active port is Speakers. Apply the board's final codec route
+# after the per-user audio server starts. The low-level spk switch is left to
+# RK817 DAPM so it can power the amplifier down between streams.
+sudo install -m 644 /dev/stdin \
+    "$TMPDIR/usr/lib/systemd/user/torder-speaker-route.service" << 'SPEAKER_ROUTE_SERVICE'
+[Unit]
+Description=Select the RK817 internal speaker route
+After=pulseaudio.service pipewire.service
+ConditionPathExists=/dev/snd/controlC0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/amixer -c 0 sset 'Playback Path' SPK
+ExecStart=/usr/bin/amixer -c 0 sset Speaker on
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+SPEAKER_ROUTE_SERVICE
+
+sudo mkdir -p "$TMPDIR/etc/systemd/user/default.target.wants"
+sudo ln -sf /usr/lib/systemd/user/torder-speaker-route.service \
+    "$TMPDIR/etc/systemd/user/default.target.wants/torder-speaker-route.service"
 
 ROOT_UUID=$(sudo blkid -s UUID -o value "${LOOP}p1")
 if ! [[ "$ROOT_UUID" =~ ^[0-9A-Fa-f-]+$ ]]; then
@@ -542,6 +653,27 @@ fi
 # Verify
 # ============================================================
 echo "=== Verify ==="
+
+# snap-confine is intentionally capability-based on Ubuntu Noble. Reapply the
+# package capabilities after all image transformations and fail closed if any
+# required privilege is missing.
+SNAP_CONFINE="$TMPDIR/usr/lib/snapd/snap-confine"
+test -x "$SNAP_CONFINE"
+command -v setcap > /dev/null
+command -v getcap > /dev/null
+sudo setcap "$SNAP_CONFINE_CAPS" "$SNAP_CONFINE"
+SNAP_CONFINE_ACTUAL=$(getcap -n "$SNAP_CONFINE")
+for capability in \
+    cap_dac_override \
+    cap_dac_read_search \
+    cap_setgid \
+    cap_setuid \
+    cap_sys_admin \
+    cap_sys_chroot; do
+    grep -F "$capability" <<< "$SNAP_CONFINE_ACTUAL" > /dev/null
+done
+printf 'snap-confine capabilities: %s\n' "$SNAP_CONFINE_ACTUAL"
+
 grep -Fx "rootdev=UUID=$ROOT_UUID" "$TMPDIR/boot/armbianEnv.txt"
 awk -v root="UUID=$ROOT_UUID" '
     $0 !~ /^[[:space:]]*#/ && $2 == "/" && $1 == root && $4 !~ /,,/ { roots++ }
@@ -712,6 +844,10 @@ fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     printf 'rknn_smoke_model=%s\n' '/usr/share/torder-rknpu/mobilenet_v1.rknn'
     printf 'dtb_rknpu=%s\n' "$(fdtget -t s "$FINAL_DTB" /npu@fde40000 status)"
     printf 'dtb_rknpu_mmu=%s\n' "$(fdtget -t s "$FINAL_DTB" /iommu@fde4b000 status)"
+    printf 'chromium_snap_revision=%s\n' '3506'
+    printf 'snap_store_revision=%s\n' '1391'
+    printf 'audio_route=%s\n' 'RK817 Playback Path=SPK'
+    printf 'snap_confine_capabilities=%s\n' "$SNAP_CONFINE_ACTUAL"
     if command -v aarch64-linux-gnu-gcc > /dev/null; then
         printf 'cross_compiler=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
     fi
@@ -744,6 +880,37 @@ ls "$TMPDIR/usr/include/rknn_api.h"
 ls "$TMPDIR/usr/share/torder-rknpu/mobilenet_v1.rknn"
 test "$(readlink "$TMPDIR/usr/lib/aarch64-linux-gnu/librknn_api.so")" = \
     "librknnrt.so"
+test -x "$TMPDIR/usr/bin/chromium-browser"
+test -x "$TMPDIR/usr/bin/snap"
+test -x "$TMPDIR/usr/bin/xdg-settings"
+test -x "$TMPDIR/usr/bin/gnome-software"
+test -x "$TMPDIR/usr/bin/amixer"
+grep -Fq 'Package: gnome-software-plugin-snap' \
+    "$TMPDIR/var/lib/dpkg/status"
+grep -A1 -Fx 'Package: gnome-software-plugin-snap' \
+    "$TMPDIR/var/lib/dpkg/status" | \
+    grep -Fx 'Status: install ok installed'
+test -x "$TMPDIR/usr/local/sbin/torder-install-bundled-snaps"
+test -f "$TMPDIR/etc/systemd/system/torder-install-bundled-snaps.service"
+test "$(readlink "$TMPDIR/etc/systemd/system/graphical.target.wants/torder-install-bundled-snaps.service")" = \
+    "../torder-install-bundled-snaps.service"
+grep -Fq "ExecStart=/usr/bin/amixer -c 0 sset 'Playback Path' SPK" \
+    "$TMPDIR/usr/lib/systemd/user/torder-speaker-route.service"
+test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-speaker-route.service")" = \
+    "/usr/lib/systemd/user/torder-speaker-route.service"
+for snap_file in \
+    bare_5.snap \
+    core22_2438.snap \
+    core24_1644.snap \
+    gtk-common-themes_1535.snap \
+    mesa-2404_1836.snap \
+    gnome-46-2404_154.snap \
+    cups_1237.snap \
+    chromium_3506.snap \
+    snap-store_1391.snap; do
+    test -s "$BUNDLED_SNAP_CACHE/$snap_file"
+    test -s "$BUNDLED_SNAP_CACHE/${snap_file%.snap}.assert"
+done
 grep -Fx 'DefaultDependencies=no' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'After=local-fs.target' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service' \

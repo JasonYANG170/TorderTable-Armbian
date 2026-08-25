@@ -18,6 +18,9 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 - **GPU**: Panfrost open-source driver with hardware acceleration
 - **Video codec**: Rockchip MPP H.264/H.265 hardware encode and decode
 - **NPU**: RK3566 RKNPU with RKNN Runtime 2.3.2 and model smoke test
+- **Browser**: Bundled ARM64 Chromium Snap with offline first-boot installation
+- **App stores**: GNOME Software with Snap support and the Snap Store desktop app
+- **Audio**: RK817 internal speaker route restored after the desktop audio server starts
 - **Performance**: CPU/GPU locked at max frequency
 - **Display**: 90Hz refresh rate (overclocked from 53.39Hz)
 - **Optimized**: Disabled Tracker, animations, heavy services
@@ -116,6 +119,16 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
   - Service starts with the graphical target, after `systemd-logind`
   - Power key locks the user session and dims backlight to `0`
   - Second press restores the previous brightness
+
+### 10. Chromium, App Stores And Snap Confinement
+- **Problem**: Firefox and Chromium failed before startup because the final image lost the file capabilities required by `snap-confine`; Chromium's Ubuntu package also did not include the Snap payload.
+- **Fix**: Reapplies and verifies the complete Noble `snap-confine` capability set after image processing. The image contains pinned ARM64 Chromium 151, Snap Store, and all required base/content snaps, which are installed locally before the first desktop starts. GNOME Software and its Snap plugin are installed as native packages.
+- **Validation**: CI checks the browser launchers, both app stores, offline Snap payload, installer ordering, and final ext4 capability metadata.
+
+### 11. RK817 Internal Speaker
+- **Problem**: The codec was detected and PulseAudio was running, but the generic mixer restore selected `Playback Path=HP`, leaving the internal speaker silent.
+- **Fix**: A per-user service runs after the desktop audio server and selects `Playback Path=SPK` with the speaker output enabled. RK817 DAPM continues to control the low-level amplifier switch between streams.
+- **Validation**: Playback through the default PulseAudio sink was verified on the device with the ALSA `Front_Center.wav` sample.
   - Keeps `bl_power=0` and avoids synthetic input so the touch controller remains responsive
 - **Files**: `/usr/local/sbin/powerkey-backlight-toggle.py`, `powerkey-backlight-toggle.service`
 
