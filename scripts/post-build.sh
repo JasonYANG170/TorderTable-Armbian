@@ -82,6 +82,16 @@ TMPDIR=$(mktemp -d)
 sudo mount "${LOOP}p1" "$TMPDIR"
 echo "Mounted at $TMPDIR"
 
+# Commands executed inside the unbooted ARM64 rootfs need the standard kernel
+# API filesystems. In particular, snap download invokes unsquashfs, which opens
+# /dev/null while verifying each asserted snap.
+sudo mount --bind /dev "$TMPDIR/dev"
+sudo mount -t proc proc "$TMPDIR/proc"
+sudo mount --bind /sys "$TMPDIR/sys"
+test -c "$TMPDIR/dev/null"
+test -r "$TMPDIR/proc/self/status"
+test -d "$TMPDIR/sys/class"
+
 test -n "$MPP_ROOTFS"
 test -x "$MPP_ROOTFS/usr/bin/mpi_enc_test"
 test -x "$MPP_ROOTFS/usr/bin/mpi_dec_test"
