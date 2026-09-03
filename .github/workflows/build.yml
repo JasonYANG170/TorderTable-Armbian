@@ -72,6 +72,9 @@ jobs:
           grep -F 'snap-store_1391.snap' scripts/post-build.sh
           grep -F 'getent ahosts api.snapcraft.io' scripts/post-build.sh
           grep -F 'mount --bind /dev "$TMPDIR/dev"' scripts/post-build.sh
+          grep -F 'IMAGE_GROWTH_MIB=4096' scripts/post-build.sh
+          grep -F 'parted --script --fix "$IMG" resizepart 1 100%' scripts/post-build.sh
+          grep -F 'resize2fs "${LOOP}p1"' scripts/post-build.sh
           grep -F "sset 'Playback Path' SPK" scripts/post-build.sh
           test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
           for option in \
@@ -103,7 +106,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
             g++-11-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            libcap2-bin \
+            libcap2-bin parted e2fsprogs \
             bc cmake ninja-build python3-dev python3-venv swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
