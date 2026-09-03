@@ -12,6 +12,7 @@ MPP_COMMIT="${ROCKCHIP_MPP_COMMIT:-unknown}"
 RKNPU_ROOTFS="${RKNPU_ROOTFS:-}"
 RKNN_COMMIT="${RKNN_TOOLKIT_COMMIT:-unknown}"
 SNAP_CONFINE_CAPS="cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_setgid,cap_setuid,cap_sys_chroot,cap_sys_ptrace,cap_sys_admin,cap_sys_resource=p"
+IMAGE_GROWTH_MIB=4096
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
 UWE5621DS_SOURCE_COMMIT="4c63dfbe1e860c45a7c5e326cddd1a87f44e4fb3"
 UWE5621DS_SRCVERSION="50D3A59AC5058B3C5B7E57D"
@@ -75,12 +76,26 @@ fi
 test -f "$DTB_SRC"
 command -v fdtget > /dev/null
 command -v fdtput > /dev/null
+command -v parted > /dev/null
+command -v e2fsck > /dev/null
+command -v resize2fs > /dev/null
+
+# The desktop image is nearly full before the pinned Chromium and Snap Store
+# payload is added. Grow the image, its only partition, and the ext4 filesystem
+# before mounting it so downloads and first-boot Snap installation have room.
+sudo truncate -s "+${IMAGE_GROWTH_MIB}M" "$IMG"
+sudo parted --script --fix "$IMG" resizepart 1 100%
 
 LOOP=$(sudo losetup -fP --show "$IMG")
 sleep 1
+E2FSCK_STATUS=0
+sudo e2fsck -pf "${LOOP}p1" || E2FSCK_STATUS=$?
+test "$E2FSCK_STATUS" -le 1
+sudo resize2fs "${LOOP}p1"
 TMPDIR=$(mktemp -d)
 sudo mount "${LOOP}p1" "$TMPDIR"
 echo "Mounted at $TMPDIR"
+test "$(df --output=avail -BM "$TMPDIR" | tail -n 1 | tr -dc '0-9')" -ge 3500
 
 # Commands executed inside the unbooted ARM64 rootfs need the standard kernel
 # API filesystems. In particular, snap download invokes unsquashfs, which opens
