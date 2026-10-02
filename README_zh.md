@@ -2,7 +2,7 @@
 
 # TorderTable-Armbian
 
-面向 Torder 平板（RK3566）的 Armbian 构建，包含桌面环境与设备优化
+Torder 平板（RK3566）的 Armbian 构建，包含桌面环境与设备优化
 
 ## 设备信息
 
