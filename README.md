@@ -1,3 +1,5 @@
+[简体中文](README_zh.md) | [English](README.md)
+
 # TorderTable-Armbian
 
 Armbian build for Torder Tablet (RK3566) with desktop and optimizations
