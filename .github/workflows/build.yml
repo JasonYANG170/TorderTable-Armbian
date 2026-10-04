@@ -26,6 +26,16 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: desktop
+            build_desktop: "yes"
+            artifact: Armbian-TorderTablet-Desktop
+          - variant: console
+            build_desktop: "no"
+            artifact: Armbian-TorderTablet-Console
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -64,8 +74,12 @@ jobs:
           grep -F 'clock-frequency = <101147760>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           grep -F 'RKNN_QUERY_PERF_RUN' assets/rknpu/rknn-smoke-test.c
-          grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base snapd chromium-browser xdg-utils libcap2-bin gnome-software gnome-software-plugin-snap alsa-utils"' \
+          grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils"' \
             userpatches/config/boards/torder-tablet.csc
+          grep -F 'PACKAGE_LIST_BOARD+=" snapd chromium-browser xdg-utils gnome-software gnome-software-plugin-snap"' \
+            userpatches/config/boards/torder-tablet.csc
+          grep -F 'IMAGE_VARIANT="${TORDER_IMAGE_VARIANT:-desktop}"' scripts/post-build.sh
+          grep -F 'systemd.unit=multi-user.target' scripts/post-build.sh
           grep -F "setcap \"\$SNAP_CONFINE_CAPS\"" scripts/post-build.sh
           grep -F 'chromium_3506.snap' scripts/post-build.sh
           grep -F 'core22_2438.snap' scripts/post-build.sh
@@ -86,6 +100,10 @@ jobs:
             'CONFIG_WLAN_UWE5622=m' \
             'CONFIG_SPRDWL_NG=m' \
             'CONFIG_TTY_OVERY_SDIO=m' \
+            'CONFIG_VT=y' \
+            'CONFIG_VT_CONSOLE=y' \
+            'CONFIG_DRM_FBDEV_EMULATION=y' \
+            'CONFIG_FRAMEBUFFER_CONSOLE=y' \
             '# CONFIG_WIFI_GENERATE_RANDOM_MAC_ADDR is not set'; do
             test "$(grep -Fxc "$option" config-6.1.115-vendor-rk35xx)" -eq 1
           done
@@ -231,19 +249,26 @@ jobs:
         timeout-minutes: 150
         run: |
           cd armbian-build
-          ./compile.sh \
+          BUILD_ARGS=(
             BOARD=torder-tablet BRANCH=vendor RELEASE=noble \
             KERNELBRANCH="commit:${ROCKCHIP_KERNEL_COMMIT}" \
-            BUILD_DESKTOP=yes BUILD_MINIMAL=no \
-            DESKTOP_ENVIRONMENT=gnome \
-            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
-            DESKTOP_APPGROUPS_SELECTED="browsers editors" \
+            BUILD_DESKTOP=${{ matrix.build_desktop }} BUILD_MINIMAL=no \
             KERNEL_CONFIGURE=no PREFER_DOCKER=no SHARE_LOG=no
+          )
+          if [ "${{ matrix.variant }}" = desktop ]; then
+            BUILD_ARGS+=(
+              DESKTOP_ENVIRONMENT=gnome
+              DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base
+              DESKTOP_APPGROUPS_SELECTED="browsers editors"
+            )
+          fi
+          ./compile.sh "${BUILD_ARGS[@]}"
 
       - name: Post-build - install device fixes
         run: |
           chmod +x scripts/post-build.sh
           sudo env \
+            TORDER_IMAGE_VARIANT="${{ matrix.variant }}" \
             ROCKCHIP_MPP_ROOTFS="$GITHUB_WORKSPACE/rockchip-mpp-rootfs" \
             ROCKCHIP_MPP_COMMIT="$ROCKCHIP_MPP_COMMIT" \
             RKNPU_ROOTFS="$GITHUB_WORKSPACE/rknpu-rootfs" \
@@ -253,34 +278,58 @@ jobs:
       - name: Compress image
         run: |
           cd armbian-build/output/images
-          sudo xz -T0 -6 *.img
-          sudo ls -lh *.img.xz
+          SOURCE_IMAGE=$(find . -maxdepth 1 -name '*.img' -print -quit)
+          test -n "$SOURCE_IMAGE"
+          OUTPUT_IMAGE="Armbian-TorderTablet-${{ matrix.variant }}.img"
+          sudo mv "$SOURCE_IMAGE" "$OUTPUT_IMAGE"
+          sudo xz -T0 -6 "$OUTPUT_IMAGE"
+          sudo ls -lh "$OUTPUT_IMAGE.xz"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-TorderTablet
-          path: |
-            armbian-build/output/images/*.img.xz
-            armbian-build/output/images/uwe5621ds-diagnostics.txt
+          name: ${{ matrix.artifact }}
+          path: armbian-build/output/images/*.img.xz
           retention-days: 14
 
       - name: Upload WiFi diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: UWE5621DS-diagnostics
-          path: armbian-build/output/images/uwe5621ds-diagnostics.txt
+          name: UWE5621DS-${{ matrix.variant }}-diagnostics
+          path: armbian-build/output/images/uwe5621ds-${{ matrix.variant }}-diagnostics.txt
           if-no-files-found: warn
           retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download both images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Armbian-TorderTablet-*
+          path: release
+          merge-multiple: true
+
+      - name: Download diagnostics
+        uses: actions/download-artifact@v4
+        with:
+          pattern: UWE5621DS-*-diagnostics
+          path: release/diagnostics
+          merge-multiple: true
 
       - name: Get build info
         id: info
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           BUILD_DATE=$(date -u +"%Y%m%d")
-          echo "tag=build-${BUILD_DATE}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "name=Armbian Torder Tablet ${BUILD_DATE}" >> $GITHUB_OUTPUT
+          echo "tag=build-${BUILD_DATE}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "name=Armbian Torder Tablet ${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+          test "$(find release -maxdepth 1 -name '*.img.xz' | wc -l)" -eq 2
+          ls -lh release/*.img.xz
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -290,12 +339,15 @@ jobs:
           body: |
             ## Armbian Torder Tablet (RK3566)
             **Kernel**: 6.1.115-vendor-rk35xx
-            **OS**: Ubuntu Noble 24.04 (GNOME)
+            **OS**: Ubuntu Noble 24.04
 
-            ### Features
-            - Filesystem UUID boot (reliable first boot and reboot)
-            - GPU Panfrost acceleration
-            - Power key lockscreen + backlight control
+            ### Images
+            - Desktop: GNOME with offline Chromium and GNOME/Snap app stores
+            - Console: no desktop environment; local display boots to tty1
+
+            ### Common features
+            - Filesystem UUID boot
+            - GPU Panfrost acceleration and RKNN runtime
             - UWE5621DS dual-band WiFi, Bluetooth, and hotspot support
             - GPT partition with SPL blobs
 
@@ -304,8 +356,8 @@ jobs:
             sudo dd if=Armbian-*.img of=/dev/sdX bs=1M status=progress
             ```
           files: |
-            armbian-build/output/images/*.img.xz
-            armbian-build/output/images/uwe5621ds-diagnostics.txt
+            release/*.img.xz
+            release/diagnostics/*.txt
           draft: false
           prerelease: false
         env:

@@ -11,6 +11,7 @@ MPP_ROOTFS="${ROCKCHIP_MPP_ROOTFS:-}"
 MPP_COMMIT="${ROCKCHIP_MPP_COMMIT:-unknown}"
 RKNPU_ROOTFS="${RKNPU_ROOTFS:-}"
 RKNN_COMMIT="${RKNN_TOOLKIT_COMMIT:-unknown}"
+IMAGE_VARIANT="${TORDER_IMAGE_VARIANT:-desktop}"
 SNAP_CONFINE_CAPS="cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_setgid,cap_setuid,cap_sys_chroot,cap_sys_ptrace,cap_sys_admin,cap_sys_resource=p"
 IMAGE_GROWTH_MIB=4096
 KERNEL_VERSION="6.1.115-vendor-rk35xx"
@@ -22,7 +23,20 @@ UWE5621DS_WCN_SHA256="9aa13de426be49f5748506279796f6eddc3479af9d5bd9568170742f54
 LOOP=""
 TMPDIR=""
 VERIFY_DIR=""
-DIAGNOSTICS="$WORK/uwe5621ds-diagnostics.txt"
+DIAGNOSTICS="$WORK/uwe5621ds-${IMAGE_VARIANT}-diagnostics.txt"
+
+case "$IMAGE_VARIANT" in
+    desktop)
+        IS_DESKTOP=true
+        ;;
+    console)
+        IS_DESKTOP=false
+        ;;
+    *)
+        echo "Unsupported image variant: $IMAGE_VARIANT" >&2
+        exit 1
+        ;;
+esac
 
 cleanup() {
     local status=$?
@@ -65,6 +79,7 @@ driver_source_commit=$UWE5621DS_SOURCE_COMMIT
 driver_srcversion=$UWE5621DS_SRCVERSION
 kernel_version=$KERNEL_VERSION
 image=$IMG
+image_variant=$IMAGE_VARIANT
 EOF
 
 echo "Image: $IMG"
@@ -81,21 +96,27 @@ command -v e2fsck > /dev/null
 command -v resize2fs > /dev/null
 
 # The desktop image is nearly full before the pinned Chromium and Snap Store
-# payload is added. Grow the image, its only partition, and the ext4 filesystem
-# before mounting it so downloads and first-boot Snap installation have room.
-sudo truncate -s "+${IMAGE_GROWTH_MIB}M" "$IMG"
-sudo parted --script "$IMG" resizepart 1 100%
+# payload is added. Grow it before mounting so downloads and first-boot Snap
+# installation have room. The console image remains compact.
+if "$IS_DESKTOP"; then
+    sudo truncate -s "+${IMAGE_GROWTH_MIB}M" "$IMG"
+    sudo parted --script "$IMG" resizepart 1 100%
+fi
 
 LOOP=$(sudo losetup -fP --show "$IMG")
 sleep 1
-E2FSCK_STATUS=0
-sudo e2fsck -pf "${LOOP}p1" || E2FSCK_STATUS=$?
-test "$E2FSCK_STATUS" -le 1
-sudo resize2fs "${LOOP}p1"
+if "$IS_DESKTOP"; then
+    E2FSCK_STATUS=0
+    sudo e2fsck -pf "${LOOP}p1" || E2FSCK_STATUS=$?
+    test "$E2FSCK_STATUS" -le 1
+    sudo resize2fs "${LOOP}p1"
+fi
 TMPDIR=$(mktemp -d)
 sudo mount "${LOOP}p1" "$TMPDIR"
 echo "Mounted at $TMPDIR"
-test "$(df --output=avail -BM "$TMPDIR" | tail -n 1 | tr -dc '0-9')" -ge 3500
+if "$IS_DESKTOP"; then
+    test "$(df --output=avail -BM "$TMPDIR" | tail -n 1 | tr -dc '0-9')" -ge 3500
+fi
 
 # Commands executed inside the unbooted ARM64 rootfs need the standard kernel
 # API filesystems. In particular, snap download invokes unsquashfs, which opens
@@ -117,10 +138,11 @@ test -f "$RKNPU_ROOTFS/usr/lib/aarch64-linux-gnu/librknnrt.so"
 sudo cp -a "$RKNPU_ROOTFS/usr/." "$TMPDIR/usr/"
 sudo ldconfig -r "$TMPDIR"
 
-# Ubuntu's Chromium package is a Snap launcher. Keep the complete ARM64 Snap
-# payload in the image so Chromium is available without a first-boot download.
-BUNDLED_SNAP_CACHE="$TMPDIR/var/cache/torder-bundled-snaps"
-sudo mkdir -p "$BUNDLED_SNAP_CACHE"
+if "$IS_DESKTOP"; then
+    # Ubuntu's Chromium package is a Snap launcher. Keep the complete ARM64 Snap
+    # payload in the image so Chromium is available without a first-boot download.
+    BUNDLED_SNAP_CACHE="$TMPDIR/var/cache/torder-bundled-snaps"
+    sudo mkdir -p "$BUNDLED_SNAP_CACHE"
 
 # The unbooted Noble rootfs points resolv.conf at systemd-resolved under /run,
 # which does not exist in a chroot. Temporarily use the runner's resolver while
@@ -263,6 +285,7 @@ SPEAKER_ROUTE_SERVICE
 sudo mkdir -p "$TMPDIR/etc/systemd/user/default.target.wants"
 sudo ln -sf /usr/lib/systemd/user/torder-speaker-route.service \
     "$TMPDIR/etc/systemd/user/default.target.wants/torder-speaker-route.service"
+fi
 
 ROOT_UUID=$(sudo blkid -s UUID -o value "${LOOP}p1")
 if ! [[ "$ROOT_UUID" =~ ^[0-9A-Fa-f-]+$ ]]; then
@@ -328,11 +351,17 @@ fi
 # ============================================================
 # 2. armbianEnv.txt
 # ============================================================
+EXTRAARGS="cma=256M"
+BOOTLOGO=true
+if ! "$IS_DESKTOP"; then
+    EXTRAARGS="$EXTRAARGS console=tty1 consoleblank=0 systemd.unit=multi-user.target"
+    BOOTLOGO=false
+fi
 sudo tee "$TMPDIR/boot/armbianEnv.txt" > /dev/null << EOF
 verbosity=1
-bootlogo=true
+bootlogo=$BOOTLOGO
 console=both
-extraargs=cma=256M
+extraargs=$EXTRAARGS
 overlay_prefix=rk35xx
 overlays=panthor-gpu
 fdtfile=rockchip/rk3566-torder-tablet.dtb
@@ -341,6 +370,16 @@ rootfstype=ext4
 usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u
 EOF
 echo "armbianEnv.txt set"
+
+if ! "$IS_DESKTOP"; then
+    sudo ln -sf /lib/systemd/system/multi-user.target \
+        "$TMPDIR/etc/systemd/system/default.target"
+    sudo mkdir -p "$TMPDIR/etc/systemd/system/getty.target.wants"
+    sudo ln -sf /lib/systemd/system/getty@.service \
+        "$TMPDIR/etc/systemd/system/getty.target.wants/getty@tty1.service"
+    sudo chroot "$TMPDIR" systemctl mask display-manager.service 2>/dev/null || true
+    echo "Console boot target and tty1 login configured"
+fi
 
 # ============================================================
 # 3. Touchscreen auto-load
@@ -396,24 +435,26 @@ sudo install -m 644 "$UWE_ASSETS/90-torder-wifi.conf" "$TMPDIR/etc/NetworkManage
 
 echo "UWE5621DS WiFi and Bluetooth assets installed"
 
-# GNOME reports Night Light as active on X11, but this VOP stack does not
-# reliably retain the color LUT. Keep its D-Bus state applied through RandR.
-test -f "$DISPLAY_ASSETS/torder-night-light.py"
-test -f "$DISPLAY_ASSETS/torder-night-light.service"
-sudo install -d "$TMPDIR/usr/local/bin" "$TMPDIR/usr/lib/systemd/user" \
-    "$TMPDIR/etc/systemd/user/default.target.wants"
-sudo install -m 755 "$DISPLAY_ASSETS/torder-night-light.py" \
-    "$TMPDIR/usr/local/bin/torder-night-light"
-sudo install -m 644 "$DISPLAY_ASSETS/torder-night-light.service" \
-    "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
-sudo ln -sf /usr/lib/systemd/user/torder-night-light.service \
-    "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service"
-echo "X11 Night Light fallback installed"
+if "$IS_DESKTOP"; then
+    # GNOME reports Night Light as active on X11, but this VOP stack does not
+    # reliably retain the color LUT. Keep its D-Bus state applied through RandR.
+    test -f "$DISPLAY_ASSETS/torder-night-light.py"
+    test -f "$DISPLAY_ASSETS/torder-night-light.service"
+    sudo install -d "$TMPDIR/usr/local/bin" "$TMPDIR/usr/lib/systemd/user" \
+        "$TMPDIR/etc/systemd/user/default.target.wants"
+    sudo install -m 755 "$DISPLAY_ASSETS/torder-night-light.py" \
+        "$TMPDIR/usr/local/bin/torder-night-light"
+    sudo install -m 644 "$DISPLAY_ASSETS/torder-night-light.service" \
+        "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
+    sudo ln -sf /usr/lib/systemd/user/torder-night-light.service \
+        "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service"
+    echo "X11 Night Light fallback installed"
+fi
 
 # ============================================================
 # 5. Runtime performance policy
 # ============================================================
-sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/sysctl.d" "$TMPDIR/etc/dconf/db/local.d"
+sudo mkdir -p "$TMPDIR/usr/local/sbin" "$TMPDIR/etc/systemd/system" "$TMPDIR/etc/sysctl.d"
 sudo tee "$TMPDIR/usr/local/sbin/torder-performance" > /dev/null << 'PERFSCRIPTEOF'
 #!/bin/sh
 set -eu
@@ -462,7 +503,9 @@ vm.page-cluster=0
 vm.vfs_cache_pressure=50
 SYSCTLEOF
 
-sudo tee "$TMPDIR/etc/dconf/db/local.d/02-torder-performance" > /dev/null << 'DCONFEOF'
+if "$IS_DESKTOP"; then
+    sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d"
+    sudo tee "$TMPDIR/etc/dconf/db/local.d/02-torder-performance" > /dev/null << 'DCONFEOF'
 [org/gnome/desktop/interface]
 enable-animations=false
 
@@ -472,7 +515,8 @@ download-updates=false
 [org/gnome/settings-daemon/plugins/color]
 night-light-temperature=uint32 4000
 DCONFEOF
-sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
+    sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
+fi
 
 for svc in packagekit.service packagekit-offline-update.service fwupd.service; do
     sudo chroot "$TMPDIR" systemctl mask "$svc" 2>/dev/null || true
@@ -649,11 +693,11 @@ Restart=always
 RestartSec=1
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 SVCEOF
 sudo chroot "$TMPDIR" systemctl enable powerkey-backlight-toggle.service 2>/dev/null || true
-sudo mkdir -p "$TMPDIR/etc/systemd/system/graphical.target.wants"
-sudo ln -sf ../powerkey-backlight-toggle.service "$TMPDIR/etc/systemd/system/graphical.target.wants/powerkey-backlight-toggle.service"
+sudo mkdir -p "$TMPDIR/etc/systemd/system/multi-user.target.wants"
+sudo ln -sf ../powerkey-backlight-toggle.service "$TMPDIR/etc/systemd/system/multi-user.target.wants/powerkey-backlight-toggle.service"
 
 sudo tee "$TMPDIR/etc/systemd/logind.conf.d/90-powerkey-lock.conf" > /dev/null << 'LOGIND'
 [Login]
@@ -678,23 +722,24 @@ echo "powerkey-backlight-toggle installed"
 # ============================================================
 # 7. GNOME power button = nothing (no shutdown dialog)
 # ============================================================
-# Set dconf defaults for GNOME power button
-sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d"
-sudo tee "$TMPDIR/etc/dconf/db/local.d/01-power" > /dev/null << 'GNOMEEOF'
+if "$IS_DESKTOP"; then
+    # Set dconf defaults for GNOME power button.
+    sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d"
+    sudo tee "$TMPDIR/etc/dconf/db/local.d/01-power" > /dev/null << 'GNOMEEOF'
 [org/gnome/settings-daemon/plugins/power]
 power-button-action='nothing'
 GNOMEEOF
 
-# Lock the setting so user can't override
-sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d/locks"
-sudo tee "$TMPDIR/etc/dconf/db/local.d/locks/01-power" > /dev/null << 'LOCKEOF'
+    # Lock the setting so user can't override it.
+    sudo mkdir -p "$TMPDIR/etc/dconf/db/local.d/locks"
+    sudo tee "$TMPDIR/etc/dconf/db/local.d/locks/01-power" > /dev/null << 'LOCKEOF'
 [org/gnome/settings-daemon/plugins/power]
 power-button-action
 LOCKEOF
 
-# Compile dconf database
-sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
-echo "GNOME power button set to nothing"
+    sudo chroot "$TMPDIR" dconf update 2>/dev/null || true
+    echo "GNOME power button set to nothing"
+fi
 
 # ============================================================
 # 8. depmod
@@ -705,10 +750,12 @@ echo "depmod done"
 # ============================================================
 # 9. GDM autologin
 # ============================================================
-GDM_CONF="$TMPDIR/etc/gdm3/custom.conf"
-if [ -f "$GDM_CONF" ]; then
-    sudo sed -i 's/AutomaticLoginEnable = false/AutomaticLoginEnable = true/' "$GDM_CONF"
-    echo "GDM autologin enabled"
+if "$IS_DESKTOP"; then
+    GDM_CONF="$TMPDIR/etc/gdm3/custom.conf"
+    if [ -f "$GDM_CONF" ]; then
+        sudo sed -i 's/AutomaticLoginEnable = false/AutomaticLoginEnable = true/' "$GDM_CONF"
+        echo "GDM autologin enabled"
+    fi
 fi
 
 # ============================================================
@@ -716,25 +763,27 @@ fi
 # ============================================================
 echo "=== Verify ==="
 
-# snap-confine is intentionally capability-based on Ubuntu Noble. Reapply the
-# package capabilities after all image transformations and fail closed if any
-# required privilege is missing.
-SNAP_CONFINE="$TMPDIR/usr/lib/snapd/snap-confine"
-test -x "$SNAP_CONFINE"
-command -v setcap > /dev/null
-command -v getcap > /dev/null
-sudo setcap "$SNAP_CONFINE_CAPS" "$SNAP_CONFINE"
-SNAP_CONFINE_ACTUAL=$(getcap -n "$SNAP_CONFINE")
-for capability in \
-    cap_dac_override \
-    cap_dac_read_search \
-    cap_setgid \
-    cap_setuid \
-    cap_sys_admin \
-    cap_sys_chroot; do
-    grep -F "$capability" <<< "$SNAP_CONFINE_ACTUAL" > /dev/null
-done
-printf 'snap-confine capabilities: %s\n' "$SNAP_CONFINE_ACTUAL"
+SNAP_CONFINE_ACTUAL="not-applicable"
+if "$IS_DESKTOP"; then
+    # snap-confine is intentionally capability-based on Ubuntu Noble. Reapply
+    # package capabilities after image transformations and fail closed.
+    SNAP_CONFINE="$TMPDIR/usr/lib/snapd/snap-confine"
+    test -x "$SNAP_CONFINE"
+    command -v setcap > /dev/null
+    command -v getcap > /dev/null
+    sudo setcap "$SNAP_CONFINE_CAPS" "$SNAP_CONFINE"
+    SNAP_CONFINE_ACTUAL=$(getcap -n "$SNAP_CONFINE")
+    for capability in \
+        cap_dac_override \
+        cap_dac_read_search \
+        cap_setgid \
+        cap_setuid \
+        cap_sys_admin \
+        cap_sys_chroot; do
+        grep -F "$capability" <<< "$SNAP_CONFINE_ACTUAL" > /dev/null
+    done
+    printf 'snap-confine capabilities: %s\n' "$SNAP_CONFINE_ACTUAL"
+fi
 
 grep -Fx "rootdev=UUID=$ROOT_UUID" "$TMPDIR/boot/armbianEnv.txt"
 awk -v root="UUID=$ROOT_UUID" '
@@ -906,10 +955,12 @@ fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     printf 'rknn_smoke_model=%s\n' '/usr/share/torder-rknpu/mobilenet_v1.rknn'
     printf 'dtb_rknpu=%s\n' "$(fdtget -t s "$FINAL_DTB" /npu@fde40000 status)"
     printf 'dtb_rknpu_mmu=%s\n' "$(fdtget -t s "$FINAL_DTB" /iommu@fde4b000 status)"
-    printf 'chromium_snap_revision=%s\n' '3506'
-    printf 'snap_store_revision=%s\n' '1391'
-    printf 'audio_route=%s\n' 'RK817 Playback Path=SPK'
-    printf 'snap_confine_capabilities=%s\n' "$SNAP_CONFINE_ACTUAL"
+    if "$IS_DESKTOP"; then
+        printf 'chromium_snap_revision=%s\n' '3506'
+        printf 'snap_store_revision=%s\n' '1391'
+        printf 'audio_route=%s\n' 'RK817 Playback Path=SPK'
+        printf 'snap_confine_capabilities=%s\n' "$SNAP_CONFINE_ACTUAL"
+    fi
     if command -v aarch64-linux-gnu-gcc > /dev/null; then
         printf 'cross_compiler=%s\n' "$(aarch64-linux-gnu-gcc --version | head -n 1)"
     fi
@@ -942,37 +993,51 @@ ls "$TMPDIR/usr/include/rknn_api.h"
 ls "$TMPDIR/usr/share/torder-rknpu/mobilenet_v1.rknn"
 test "$(readlink "$TMPDIR/usr/lib/aarch64-linux-gnu/librknn_api.so")" = \
     "librknnrt.so"
-test -x "$TMPDIR/usr/bin/chromium-browser"
-test -x "$TMPDIR/usr/bin/snap"
-test -x "$TMPDIR/usr/bin/xdg-settings"
-test -x "$TMPDIR/usr/bin/gnome-software"
 test -x "$TMPDIR/usr/bin/amixer"
-grep -Fq 'Package: gnome-software-plugin-snap' \
-    "$TMPDIR/var/lib/dpkg/status"
-grep -A1 -Fx 'Package: gnome-software-plugin-snap' \
-    "$TMPDIR/var/lib/dpkg/status" | \
-    grep -Fx 'Status: install ok installed'
-test -x "$TMPDIR/usr/local/sbin/torder-install-bundled-snaps"
-test -f "$TMPDIR/etc/systemd/system/torder-install-bundled-snaps.service"
-test "$(readlink "$TMPDIR/etc/systemd/system/graphical.target.wants/torder-install-bundled-snaps.service")" = \
-    "../torder-install-bundled-snaps.service"
-grep -Fq "ExecStart=/usr/bin/amixer -c 0 sset 'Playback Path' SPK" \
-    "$TMPDIR/usr/lib/systemd/user/torder-speaker-route.service"
-test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-speaker-route.service")" = \
-    "/usr/lib/systemd/user/torder-speaker-route.service"
-for snap_file in \
-    bare_5.snap \
-    core22_2438.snap \
-    core24_1644.snap \
-    gtk-common-themes_1535.snap \
-    mesa-2404_1836.snap \
-    gnome-46-2404_154.snap \
-    cups_1237.snap \
-    chromium_3506.snap \
-    snap-store_1391.snap; do
-    test -s "$BUNDLED_SNAP_CACHE/$snap_file"
-    test -s "$BUNDLED_SNAP_CACHE/${snap_file%.snap}.assert"
-done
+if "$IS_DESKTOP"; then
+    test -x "$TMPDIR/usr/bin/chromium-browser"
+    test -x "$TMPDIR/usr/bin/snap"
+    test -x "$TMPDIR/usr/bin/xdg-settings"
+    test -x "$TMPDIR/usr/bin/gnome-software"
+    grep -Fq 'Package: gnome-software-plugin-snap' \
+        "$TMPDIR/var/lib/dpkg/status"
+    grep -A1 -Fx 'Package: gnome-software-plugin-snap' \
+        "$TMPDIR/var/lib/dpkg/status" | \
+        grep -Fx 'Status: install ok installed'
+    test -x "$TMPDIR/usr/local/sbin/torder-install-bundled-snaps"
+    test -f "$TMPDIR/etc/systemd/system/torder-install-bundled-snaps.service"
+    test "$(readlink "$TMPDIR/etc/systemd/system/graphical.target.wants/torder-install-bundled-snaps.service")" = \
+        "../torder-install-bundled-snaps.service"
+    grep -Fq "ExecStart=/usr/bin/amixer -c 0 sset 'Playback Path' SPK" \
+        "$TMPDIR/usr/lib/systemd/user/torder-speaker-route.service"
+    test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-speaker-route.service")" = \
+        "/usr/lib/systemd/user/torder-speaker-route.service"
+    for snap_file in \
+        bare_5.snap \
+        core22_2438.snap \
+        core24_1644.snap \
+        gtk-common-themes_1535.snap \
+        mesa-2404_1836.snap \
+        gnome-46-2404_154.snap \
+        cups_1237.snap \
+        chromium_3506.snap \
+        snap-store_1391.snap; do
+        test -s "$BUNDLED_SNAP_CACHE/$snap_file"
+        test -s "$BUNDLED_SNAP_CACHE/${snap_file%.snap}.assert"
+    done
+else
+    test "$(readlink "$TMPDIR/etc/systemd/system/default.target")" = \
+        "/lib/systemd/system/multi-user.target"
+    test "$(readlink "$TMPDIR/etc/systemd/system/getty.target.wants/getty@tty1.service")" = \
+        "/lib/systemd/system/getty@.service"
+    grep -F 'console=tty1 consoleblank=0 systemd.unit=multi-user.target' \
+        "$TMPDIR/boot/armbianEnv.txt"
+    grep -Fx 'bootlogo=false' "$TMPDIR/boot/armbianEnv.txt"
+    test ! -e "$TMPDIR/usr/bin/gnome-shell"
+    test ! -e "$TMPDIR/usr/sbin/gdm3"
+    test ! -e "$TMPDIR/usr/bin/chromium-browser"
+    test ! -e "$TMPDIR/usr/bin/gnome-software"
+fi
 grep -Fx 'DefaultDependencies=no' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'After=local-fs.target' "$TMPDIR/etc/systemd/system/torder-wifi-mac.service"
 grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigger.service' \
@@ -980,10 +1045,12 @@ grep -Fx 'Before=sysinit.target systemd-modules-load.service systemd-udev-trigge
 test "$(readlink "$TMPDIR/etc/systemd/system/sysinit.target.wants/torder-wifi-mac.service")" = \
     "../torder-wifi-mac.service"
 grep -Fx "wifi-sec.pmf=1" "$TMPDIR/etc/NetworkManager/conf.d/90-torder-wifi.conf"
-python3 -m py_compile "$TMPDIR/usr/local/bin/torder-night-light"
-ls "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
-test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service")" = \
-    "/usr/lib/systemd/user/torder-night-light.service"
+if "$IS_DESKTOP"; then
+    python3 -m py_compile "$TMPDIR/usr/local/bin/torder-night-light"
+    ls "$TMPDIR/usr/lib/systemd/user/torder-night-light.service"
+    test "$(readlink "$TMPDIR/etc/systemd/user/default.target.wants/torder-night-light.service")" = \
+        "/usr/lib/systemd/user/torder-night-light.service"
+fi
 test ! -e "$TMPDIR/lib/firmware/unisoc_wifi_mac.txt"
 test -x "$TMPDIR/usr/sbin/dnsmasq"
 
