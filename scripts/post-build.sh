@@ -84,7 +84,7 @@ command -v resize2fs > /dev/null
 # payload is added. Grow the image, its only partition, and the ext4 filesystem
 # before mounting it so downloads and first-boot Snap installation have room.
 sudo truncate -s "+${IMAGE_GROWTH_MIB}M" "$IMG"
-sudo parted --script --fix "$IMG" resizepart 1 100%
+sudo parted --script "$IMG" resizepart 1 100%
 
 LOOP=$(sudo losetup -fP --show "$IMG")
 sleep 1
