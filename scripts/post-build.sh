@@ -99,7 +99,11 @@ command -v resize2fs > /dev/null
 # payload is added. Grow it before mounting so downloads and first-boot Snap
 # installation have room. The console image remains compact.
 if "$IS_DESKTOP"; then
+    command -v sgdisk > /dev/null
     sudo truncate -s "+${IMAGE_GROWTH_MIB}M" "$IMG"
+    # truncate leaves the backup GPT at the old end of the image. Relocate it
+    # before parted computes the last usable sector for the root partition.
+    sudo sgdisk --move-second-header "$IMG"
     sudo parted --script "$IMG" resizepart 1 100%
 fi
 
@@ -335,9 +339,9 @@ for DTB_DST in \
     sudo fdtget -t s "$DTB_DST" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     test "$(sudo fdtget -t u "$DTB_DST" \
         /dsi@fe060000/panel@0/display-timings/timing0 clock-frequency)" = \
-        "101147760"
+        "67431840"
 done
-echo "DTB installed with filesystem UUID root and 90Hz panel timing"
+echo "DTB installed with filesystem UUID root and 60Hz panel timing"
 
 # Panthor overlay
 sudo mkdir -p "$TMPDIR/boot/dtb/rockchip/overlay"
