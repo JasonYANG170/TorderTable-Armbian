@@ -9,7 +9,7 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 - **SoC**: Rockchip RK3566 (Cortex-A55 quad-core, up to 1.8GHz)
 - **GPU**: Mali-G52 (Panfrost driver)
 - **RAM**: 4GB LPDDR4x
-- **Display**: 800x1280 DSI panel @90Hz
+- **Display**: 800x1280 DSI panel @60Hz
 - **Kernel**: 6.1.115-vendor-rk35xx
 - **OS**: Ubuntu Noble 24.04 (Armbian 26.02.0-trunk)
 - **DTB**: `rockchip/rk3566-torder-tablet.dtb`
@@ -24,7 +24,7 @@ Armbian build for Torder Tablet (RK3566) with desktop and optimizations
 - **App stores**: GNOME Software with Snap support and the Snap Store desktop app
 - **Audio**: RK817 internal speaker route restored after the desktop audio server starts
 - **Performance**: CPU/GPU locked at max frequency
-- **Display**: 90Hz refresh rate (overclocked from 53.39Hz)
+- **Display**: 60Hz refresh rate (overclocked from 53.39Hz)
 - **Optimized**: Disabled Tracker, animations, heavy services
 - **Wireless**: UWE5621DS 2.4/5GHz WiFi, Bluetooth, and WPA2 hotspot support
 - **Power key**: Lock screen, backlight off, and touch-safe wake
@@ -102,7 +102,7 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 
 ### 7. Display Refresh Rate
 - **Problem**: Factory timing runs at only 53.39Hz
-- **Fix**: Pixel clock set from 60MHz to 101.14776MHz (90Hz)
+- **Fix**: Pixel clock set from 60MHz to 67.43184MHz (60Hz)
 - **Files**: Device tree `rk3566-torder-tablet.dts`
 
 ### 8. GNOME Optimization
@@ -184,9 +184,9 @@ Reference files from working device:
 | Parameter | Value |
 |-----------|-------|
 | Resolution | 800x1280 |
-| Pixel Clock | 101.14776 MHz |
-| DSI Bandwidth | 607 Mbps/lane |
-| Refresh Rate | **90 Hz** |
+| Pixel Clock | 67.43184 MHz |
+| DSI Bandwidth | 405 Mbps/lane |
+| Refresh Rate | **60 Hz** |
 | DSI Lanes | 4 |
 
 ## Performance
@@ -201,4 +201,4 @@ Reference files from working device:
 - The UWE5621DS firmware does not support WPA3-SAE. WPA3-only access points
   must enable WPA2/WPA3 transition mode with WPA2-PSK clients permitted.
 - No camera hardware detected
-- The 90Hz panel timing is an overclock over the factory 53.39Hz mode
+- The 60Hz panel timing is an overclock over the factory 53.39Hz mode

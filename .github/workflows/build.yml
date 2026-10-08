@@ -20,6 +20,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
@@ -70,8 +72,8 @@ jobs:
             assets/uwe5621ds/wifi_56630001_2ant.ini | sha256sum --check -
           printf '%s  %s\n' "$UWE5621DS_3ANT_INI_SHA256" \
             assets/uwe5621ds/wifi_56630001_3ant.ini | sha256sum --check -
-          echo 'd6e1ce8f8e54298680dda5bd721dbe3bed51abe1463fdfcf5dfdf4985d4e2b35  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
-          grep -F 'clock-frequency = <101147760>;' \
+          echo '626b9a243fa26b7c2d39b5c6b9357730d920ffe8b7ba58717e2ffc6ae47fb14c  dtb/rockchip/rk3566-torder-tablet.dtb' | sha256sum --check -
+          grep -F 'clock-frequency = <67431840>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           grep -F 'RKNN_QUERY_PERF_RUN' assets/rknpu/rknn-smoke-test.c
           grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils"' \
@@ -87,6 +89,7 @@ jobs:
           grep -F 'getent ahosts api.snapcraft.io' scripts/post-build.sh
           grep -F 'mount --bind /dev "$TMPDIR/dev"' scripts/post-build.sh
           grep -F 'IMAGE_GROWTH_MIB=4096' scripts/post-build.sh
+          grep -F 'sgdisk --move-second-header "$IMG"' scripts/post-build.sh
           grep -F 'parted --script "$IMG" resizepart 1 100%' scripts/post-build.sh
           grep -F 'resize2fs "${LOOP}p1"' scripts/post-build.sh
           grep -F "sset 'Playback Path' SPK" scripts/post-build.sh
@@ -124,7 +127,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
             g++-11-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            libcap2-bin parted e2fsprogs \
+            libcap2-bin parted gdisk e2fsprogs \
             bc cmake ninja-build python3-dev python3-venv swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
@@ -135,6 +138,9 @@ jobs:
           test "$(printf '6 * 7\n' | bc)" = "42"
           echo "CC=gcc-11" >> "$GITHUB_ENV"
           echo "CXX=g++-11" >> "$GITHUB_ENV"
+
+      - name: Test GPT and filesystem image growth
+        run: sudo python3 scripts/test-image-growth.py
 
       - name: Build Rockchip MPP userspace
         run: |
@@ -302,6 +308,7 @@ jobs:
           retention-days: 14
 
   release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-22.04
     permissions:

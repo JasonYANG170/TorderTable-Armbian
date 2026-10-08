@@ -9,7 +9,7 @@ Torder 平板（RK3566）的 Armbian 构建，包含桌面环境与设备优化
 - **SoC**：Rockchip RK3566（Cortex-A55 四核，高达 1.8GHz）
 - **GPU**：Mali-G52（Panfrost 驱动程序）
 - **RAM**：4GB LPDDR4x
-- **显示**：800x1280 DSI 面板 @90Hz
+- **显示**：800x1280 DSI 面板 @60Hz
 - **内核**：6.1.115-vendor-rk35xx
 - **操作系统**：Ubuntu Noble 24.04（Armbian 26.02.0-trunk）
 - **DTB**：`rockchip/rk3566-torder-tablet.dtb`
@@ -24,7 +24,7 @@ Torder 平板（RK3566）的 Armbian 构建，包含桌面环境与设备优化
 - **应用程序商店**：支持 Snap 的 GNOME 软件和 Snap Store 桌面应用程序
 - **音频**：桌面音频服务器启动后RK817内部扬声器路由恢复
 - **性能**：CPU/GPU 锁定在最大频率
-- **显示**：90Hz 刷新率（从 53.39Hz 超频）
+- **显示**：60Hz 刷新率（从 53.39Hz 超频）
 - **优化**：禁用Tracker、动画、繁重服务
 - **无线**：UWE5621DS 2.4/5GHz WiFi、蓝牙和 WPA2 热点支持
 - **电源键**：锁定屏幕、背光关闭和触摸安全唤醒
@@ -102,7 +102,7 @@ cp /path/to/TorderTable-Armbian/config-6.1.115-vendor-rk35xx \
 
 ### 7. 显示刷新率
 - **问题**：出厂时序仅以 53.39Hz 运行
-- **修复**：像素时钟设置从 60MHz 到 101.14776MHz (90Hz)
+- **修复**：像素时钟设置从 60MHz 到 67.43184MHz (60Hz)
 - **文件**：设备树 `rk3566-torder-tablet.dts`
 
 ### 8.GNOME 优化
@@ -184,9 +184,9 @@ userpatches/
 |参数|数值|
 |-----------|-------|
 |分辨率| 800x1280 |
-|像素时钟| 101.14776兆赫|
-| DSI 带宽 | 607 Mbps/通道 |
-|刷新率| **90 赫兹** |
+|像素时钟| 67.43184兆赫|
+| DSI 带宽 | 405 Mbps/通道 |
+|刷新率| **60 赫兹** |
 | DSI 通道 | 4 |
 
 ## 性能
@@ -201,4 +201,4 @@ userpatches/
 - UWE5621DS 固件不支持 WPA3-SAE。仅 WPA3 接入点
   必须启用 WPA2/WPA3 转换模式并允许 WPA2-PSK 客户端。
 - 未检测到相机硬件
-- 90Hz 面板时序是对工厂 53.39Hz 模式的超频
+- 60Hz 面板时序是对工厂 53.39Hz 模式的超频
