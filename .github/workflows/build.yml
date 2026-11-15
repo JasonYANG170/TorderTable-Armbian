@@ -76,7 +76,7 @@ jobs:
           grep -F 'clock-frequency = <67431840>;' \
             userpatches/patch/kernel/rk35xx-vendor-6.1/dt/rk3566-torder-tablet.dts
           grep -F 'RKNN_QUERY_PERF_RUN' assets/rknpu/rknn-smoke-test.c
-          grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils"' \
+          grep -Fx 'PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils v4l-utils"' \
             userpatches/config/boards/torder-tablet.csc
           grep -F 'PACKAGE_LIST_BOARD+=" snapd chromium-browser xdg-utils gnome-software gnome-software-plugin-snap"' \
             userpatches/config/boards/torder-tablet.csc
@@ -93,8 +93,9 @@ jobs:
           grep -F 'parted --script "$IMG" resizepart 1 100%' scripts/post-build.sh
           grep -F 'resize2fs "${LOOP}p1"' scripts/post-build.sh
           grep -F "sset 'Playback Path' SPK" scripts/post-build.sh
-          test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '0bd97a22cecfd4fd73dec1a585bb59e1dff8f3f0'
+          test "$(git hash-object config-6.1.115-vendor-rk35xx)" = '4cc6be22edd128f8220a065850035d2460f78668'
           for option in \
+            'CONFIG_VIDEO_GC02M0=m' \
             'CONFIG_ROCKCHIP_RKNPU=y' \
             'CONFIG_WCN_BSP_DRIVER_BUILDIN=y' \
             'CONFIG_RK_WIFI_DEVICE_UWE5621=y' \
