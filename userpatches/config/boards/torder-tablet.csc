@@ -11,7 +11,7 @@ BOOT_FDT_FILE="rockchip/rk3566-torder-tablet.dtb"
 BOOT_SCENARIO="spl-blobs"
 IMAGE_PARTITION_TABLE="gpt"
 GOVERNOR="performance"
-PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils"
+PACKAGE_LIST_BOARD="dnsmasq-base libcap2-bin alsa-utils v4l-utils"
 if [[ "${BUILD_DESKTOP:-no}" == "yes" ]]; then
 	PACKAGE_LIST_BOARD+=" snapd chromium-browser xdg-utils gnome-software gnome-software-plugin-snap"
 fi
@@ -21,8 +21,8 @@ function post_family_config__torder_tablet_use_mainline_uboot() {
 	display_alert "$BOARD" "Using mainline U-Boot for $BOARD / $BRANCH" "info"
 
 	declare -g BOOTSOURCE="https://github.com/u-boot/u-boot.git"
-	declare -g BOOTBRANCH="tag:v2025.10"
-	declare -g BOOTPATCHDIR="v2025.10"
+	declare -g BOOTBRANCH="tag:v2026.10"
+	declare -g BOOTPATCHDIR="v2026.10"
 
 	declare -g UBOOT_TARGET_MAP="BL31=${RKBIN_DIR}/${BL31_BLOB} ROCKCHIP_TPL=${RKBIN_DIR}/${DDR_BLOB};;u-boot-rockchip.bin"
 

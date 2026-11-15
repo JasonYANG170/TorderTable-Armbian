@@ -8,10 +8,12 @@ Armbian desktop and console images for the Torder tablet.
 
 - **SoC**: Rockchip RK3566 (Cortex-A55, 4 cores, 1.8 GHz)
 - **GPU**: Mali-G52 (Panfrost)
-- **RAM**: 4 GB LPDDR4x
+- **RAM**: 4 GB LPDDR3
 - **Display**: 800 × 1280 DSI, 60 Hz
 - **Kernel**: `6.1.115-vendor-rk35xx`
 - **OS**: Ubuntu Noble 24.04
+- **Bootloader**: U-Boot v2026.10
+- **Cameras**: Front GC02M1 and rear GC02M0
 - **DTB**: `rockchip/rk3566-torder-tablet.dtb`
 
 ## Build

@@ -23,6 +23,7 @@ UWE5621DS_WCN_SHA256="9aa13de426be49f5748506279796f6eddc3479af9d5bd9568170742f54
 LOOP=""
 TMPDIR=""
 VERIFY_DIR=""
+CAMERA_DTB_DIR=""
 DIAGNOSTICS="$WORK/uwe5621ds-${IMAGE_VARIANT}-diagnostics.txt"
 
 case "$IMAGE_VARIANT" in
@@ -60,6 +61,9 @@ cleanup() {
     TMPDIR=""
     LOOP=""
     VERIFY_DIR=""
+    if [ -n "$CAMERA_DTB_DIR" ]; then
+        rm -rf -- "$CAMERA_DTB_DIR"
+    fi
     set -e
     return "$status"
 }
@@ -322,6 +326,11 @@ echo "Root fstab entry pinned to filesystem UUID"
 
 # ============================================================
 # 1. DTB
+CAMERA_DTB_DIR=$(mktemp -d)
+dtc -@ -Wno-unique_unit_address -I dts -O dtb -o "$CAMERA_DTB_DIR/cameras.dtbo" \
+    "$SCRIPT_DIR/../assets/camera/torder-r10d-cameras.dts"
+fdtoverlay -i "$DTB_SRC" -o "$CAMERA_DTB_DIR/torder.dtb" "$CAMERA_DTB_DIR/cameras.dtbo"
+DTB_SRC="$CAMERA_DTB_DIR/torder.dtb"
 # ============================================================
 sudo mkdir -p "$TMPDIR/boot/dtb/rockchip"
 sudo mkdir -p "$TMPDIR/boot/dtb-6.1.115-vendor-rk35xx/rockchip"
@@ -355,7 +364,7 @@ fi
 # ============================================================
 # 2. armbianEnv.txt
 # ============================================================
-EXTRAARGS="cma=256M"
+EXTRAARGS="cma=256M initcall_blacklist=rkisp_clr_unready_dev"
 BOOTLOGO=true
 if ! "$IS_DESKTOP"; then
     EXTRAARGS="$EXTRAARGS console=tty1 consoleblank=0 systemd.unit=multi-user.target"
@@ -905,6 +914,15 @@ strings "$FW/uwe5621ds/wcnmodem_2ant.bin" | \
     grep -Fx 'Project Version:uwe5623_marlin3E_ott'
 
 FINAL_DTB="$TMPDIR/boot/dtb/rockchip/rk3566-torder-tablet.dtb"
+CAMERA_BUS=/i2c@fe5b0000
+test "$(fdtget -t s "$FINAL_DTB" "$CAMERA_BUS/camera-rear@37" compatible)" = "galaxycore,gc02m0"
+test "$(fdtget -t s "$FINAL_DTB" "$CAMERA_BUS/camera-front@37" compatible)" = "galaxycore,gc02m1"
+for phy in /csi2-dphy1 /csi2-dphy2 /rkisp-vir0; do
+    test "$(fdtget -t s "$FINAL_DTB" "$phy" status)" = "okay"
+done
+camera_aliases=$(modinfo -b "$TMPDIR" -k "$KERNEL_VERSION" -F alias gc02m0)
+grep -Fq 'Cgalaxycore,gc02m0' <<< "$camera_aliases"
+grep -Fq 'Cgalaxycore,gc02m1' <<< "$camera_aliases"
 test "$(fdtget -t s "$FINAL_DTB" /sprd-wlan compatible)" = "sprd,unisoc-wifi"
 test "$(fdtget -t s "$FINAL_DTB" /sprd-wlan status)" = "okay"
 test "$(fdtget -t s "$FINAL_DTB" /uwe-bsp compatible)" = "unisoc,uwe_bsp"
@@ -957,6 +975,7 @@ fdtget -t s "$FINAL_DTB" /chosen bootargs | grep -F "root=UUID=$ROOT_UUID"
     printf 'rknn_toolkit_commit=%s\n' "$RKNN_COMMIT"
     printf 'rknn_runtime=%s\n' '/usr/lib/aarch64-linux-gnu/librknnrt.so'
     printf 'rknn_smoke_model=%s\n' '/usr/share/torder-rknpu/mobilenet_v1.rknn'
+    printf 'camera_sensors=%s\n' 'GC02M0 rear, GC02M1 front'
     printf 'dtb_rknpu=%s\n' "$(fdtget -t s "$FINAL_DTB" /npu@fde40000 status)"
     printf 'dtb_rknpu_mmu=%s\n' "$(fdtget -t s "$FINAL_DTB" /iommu@fde4b000 status)"
     if "$IS_DESKTOP"; then

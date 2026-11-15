@@ -127,7 +127,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-11 g++-11 gcc-11-aarch64-linux-gnu \
             g++-11-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            libcap2-bin parted gdisk e2fsprogs \
+            device-tree-compiler kmod libcap2-bin parted gdisk e2fsprogs \
             bc cmake ninja-build python3-dev python3-venv swig
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
@@ -234,13 +234,15 @@ jobs:
           cp userpatches/kernel/rk35xx-vendor-6.1/*.patch armbian-build/userpatches/kernel/rk35xx-vendor-6.1/
           for patch in \
             0001-uwe5621ds-rockchip-driver.patch \
-            0002-uwe5621ds-load-device-mac.patch; do
+            0002-uwe5621ds-load-device-mac.patch \
+            0003-media-i2c-add-gc02m0-and-gc02m1.patch; do
             cmp "userpatches/kernel/rk35xx-vendor-6.1/$patch" \
               "armbian-build/userpatches/kernel/rk35xx-vendor-6.1/$patch"
           done
           cp userpatches/patch/kernel/rk35xx-vendor-6.1/dt/* armbian-build/userpatches/patch/kernel/rk35xx-vendor-6.1/dt/
           cp userpatches/customize/images/*.sh armbian-build/userpatches/customize/images/ 2>/dev/null || true
           cp dtb/rockchip/rk3566-torder-tablet.dtb armbian-build/userpatches/dtb/rockchip/
+          cp -a userpatches/u-boot armbian-build/userpatches/
 
       - name: Fix Docker config for ORAS
         run: echo '{ }' > ~/.docker/config.json
@@ -355,6 +357,7 @@ jobs:
             ### Common features
             - Filesystem UUID boot
             - GPU Panfrost acceleration and RKNN runtime
+            - Front GC02M1 and rear GC02M0 camera support
             - UWE5621DS dual-band WiFi, Bluetooth, and hotspot support
             - GPT partition with SPL blobs
 

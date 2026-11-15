@@ -8,10 +8,12 @@ Torder 平板的 Armbian 桌面版和控制台版镜像。
 
 - **SoC**: Rockchip RK3566 (Cortex-A55 四核，1.8 GHz)
 - **GPU**: Mali-G52 (Panfrost)
-- **RAM**: 4 GB LPDDR4x
+- **RAM**: 4 GB LPDDR3
 - **屏幕**: 800 × 1280 DSI, 60 Hz
 - **内核**: `6.1.115-vendor-rk35xx`
 - **系统**: Ubuntu Noble 24.04
+- **引导**：U-Boot v2026.10
+- **摄像头**：前置 GC02M1，后置 GC02M0
 - **DTB**: `rockchip/rk3566-torder-tablet.dtb`
 
 ## 构建
