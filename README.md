@@ -22,6 +22,22 @@ Armbian desktop and console images for the Torder tablet.
 
 Push to `main` or run **Build Armbian** in Actions. Get the desktop or console image from [Releases](https://github.com/JasonYANG170/TorderTable-Armbian/releases).
 
+Download the files for one variant into an empty directory. The commands below use the desktop filename. For the console image, set `image=Armbian-TorderTablet-console.img.xz`.
+
+```bash
+image=Armbian-TorderTablet-desktop.img.xz
+```
+
+For a single `.img.xz` download, also download its `.sha256` file and run `sha256sum -c "$image.sha256"`.
+
+Images of 2 GiB or more are published as numbered parts under 2 GiB each. Download every part and both `.sha256` files, then verify the parts and the reassembled image before decompressing.
+
+```bash
+sha256sum -c "$image.parts.sha256" &&
+  cat "$image".part-[0-9][0-9][0-9] > "$image" &&
+  sha256sum -c "$image.sha256"
+```
+
 ### Local Build
 
 Use Ubuntu 22.04 with GCC 11. The commands build the GNOME base image. The [workflow](.github/workflows/build.yml) also prepares Rockchip MPP and RKNN and runs the device post-build script for release images.

@@ -22,6 +22,22 @@ Torder 平板的 Armbian 桌面版和控制台版镜像。
 
 推送到 `main`，或在 Actions 页面运行 **Build Armbian**。从 [Releases](https://github.com/JasonYANG170/TorderTable-Armbian/releases) 下载桌面版或控制台版镜像。
 
+把同一版本、同一类型的文件下载到一个空目录。下面以桌面版为例。控制台版请设置 `image=Armbian-TorderTablet-console.img.xz`。
+
+```bash
+image=Armbian-TorderTablet-desktop.img.xz
+```
+
+如果下载的是单个 `.img.xz`，同时下载对应的 `.sha256` 文件，然后运行 `sha256sum -c "$image.sha256"`。
+
+大小达到 2 GiB 的镜像会分卷发布，每卷小于 2 GiB。下载全部编号分卷和两个 `.sha256` 文件，在解压前依次校验分卷、重组并校验完整镜像。
+
+```bash
+sha256sum -c "$image.parts.sha256" &&
+  cat "$image".part-[0-9][0-9][0-9] > "$image" &&
+  sha256sum -c "$image.sha256"
+```
+
 ### 本地构建
 
 使用 Ubuntu 22.04 和 GCC 11。以下命令构建 GNOME 基础镜像，正式发布的镜像还按 [CI 工作流](.github/workflows/build.yml) 安装 Rockchip MPP、RKNN 和设备适配组件。

@@ -317,6 +317,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download both images
         uses: actions/download-artifact@v4
         with:
@@ -334,18 +338,24 @@ jobs:
       - name: Get build info
         id: info
         run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          SHORT_SHA=${GITHUB_SHA:0:7}
           BUILD_DATE=$(date -u +"%Y%m%d")
           echo "tag=build-${BUILD_DATE}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "name=Armbian Torder Tablet ${BUILD_DATE}" >> "$GITHUB_OUTPUT"
-          test "$(find release -maxdepth 1 -name '*.img.xz' | wc -l)" -eq 2
-          ls -lh release/*.img.xz
+
+      - name: Split and verify release images
+        shell: bash
+        working-directory: release
+        run: |
+          bash ../scripts/prepare-release-images.sh \
+            Armbian-TorderTablet-desktop.img.xz Armbian-TorderTablet-console.img.xz
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.info.outputs.tag }}
           name: ${{ steps.info.outputs.name }}
+          target_commitish: ${{ github.sha }}
           body: |
             ## Armbian Torder Tablet (RK3566)
             **Kernel**: 6.1.115-vendor-rk35xx
@@ -362,12 +372,28 @@ jobs:
             - UWE5621DS dual-band WiFi, Bluetooth, and hotspot support
             - GPT partition with SPL blobs
 
-            ### Flash
+            ### Verify and reassemble the image
+
+            Download the files for one variant into an empty directory. Set `image` to the desktop or console filename.
+            For a single `.img.xz` download, run `sha256sum -c "$image.sha256"`.
+            For a split image, download every numbered part and both `.sha256` files, then run:
+
             ```bash
-            sudo dd if=Armbian-*.img of=/dev/sdX bs=1M status=progress
+            image=Armbian-TorderTablet-desktop.img.xz
+            sha256sum -c "$image.parts.sha256" &&
+              cat "$image".part-[0-9][0-9][0-9] > "$image" &&
+              sha256sum -c "$image.sha256"
+            ```
+
+            ### Flash
+
+            Decompress the verified image and write it to the target device.
+            ```bash
+            xz -d "$image" &&
+              sudo dd if="${image%.xz}" of=/dev/sdX bs=1M status=progress
             ```
           files: |
-            release/*.img.xz
+            release/*.img.xz*
             release/diagnostics/*.txt
           draft: false
           prerelease: false
