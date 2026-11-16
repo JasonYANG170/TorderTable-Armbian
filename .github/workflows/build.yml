@@ -285,13 +285,15 @@ jobs:
             bash scripts/post-build.sh armbian-build/output/images
 
       - name: Compress image
+        env:
+          XZ_PRESET: ${{ matrix.variant == 'desktop' && '-8' || '-6' }}
         run: |
           cd armbian-build/output/images
           SOURCE_IMAGE=$(find . -maxdepth 1 -name '*.img' -print -quit)
           test -n "$SOURCE_IMAGE"
           OUTPUT_IMAGE="Armbian-TorderTablet-${{ matrix.variant }}.img"
           sudo mv "$SOURCE_IMAGE" "$OUTPUT_IMAGE"
-          sudo xz -T0 -6 "$OUTPUT_IMAGE"
+          sudo xz -T0 --memlimit-compress=4GiB "$XZ_PRESET" "$OUTPUT_IMAGE"
           sudo ls -lh "$OUTPUT_IMAGE.xz"
 
       - name: Upload artifact
